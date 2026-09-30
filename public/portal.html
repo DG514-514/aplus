@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Account | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#809678">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <script src="/js/portal.js" defer></script>
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <div class="container portal-nav">
+      <a href="/" class="brand"><img src="/img/logo.png" alt="A+ Cleaning Solutions" width="800" height="333"></a>
+      <div class="portal-user">
+        <span class="avatar" id="avatar" aria-hidden="true"></span>
+        <span class="portal-user-name" id="user-name"></span>
+        <button class="btn btn-outline btn-sm" id="logout-btn" type="button">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container portal-main" id="main">
+    <div class="portal-welcome">
+      <div>
+        <h1 id="greeting">Welcome back</h1>
+        <p id="location-line" class="muted"></p>
+      </div>
+      <a class="btn btn-primary btn-sm" href="mailto:info@aplus-cleaning-solutions.com?subject=Booking%20request">Book Another Clean</a>
+    </div>
+
+    <section class="stats" aria-label="Summary">
+      <article class="stat stat-feature">
+        <span class="stat-label">Next visit</span>
+        <strong class="stat-value" id="stat-next">—</strong>
+        <span class="stat-meta" id="stat-next-meta"></span>
+      </article>
+      <article class="stat">
+        <span class="stat-label">Completed cleans</span>
+        <strong class="stat-value" id="stat-completed">—</strong>
+        <span class="stat-meta">all time</span>
+      </article>
+      <article class="stat">
+        <span class="stat-label">Total paid</span>
+        <strong class="stat-value" id="stat-spent">—</strong>
+        <span class="stat-meta">completed orders</span>
+      </article>
+      <article class="stat">
+        <span class="stat-label">Current plan</span>
+        <strong class="stat-value" id="stat-plan">—</strong>
+        <span class="stat-meta" id="stat-plan-meta"></span>
+      </article>
+    </section>
+
+    <section class="panel" aria-labelledby="orders-heading">
+      <div class="panel-head">
+        <h2 id="orders-heading">Order history</h2>
+        <div class="tabs" role="tablist" aria-label="Filter orders">
+          <button role="tab" type="button" class="tab" aria-selected="true" data-filter="all">All</button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-filter="scheduled">Upcoming</button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-filter="completed">Completed</button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-filter="cancelled">Cancelled</button>
+        </div>
+      </div>
+
+      <div class="alert alert-error" id="orders-error" role="alert" hidden></div>
+
+      <div class="table-wrap">
+        <table class="orders">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Order</th>
+              <th scope="col">Service</th>
+              <th scope="col">Location</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="orders-body">
+            <tr class="loading-row"><td colspan="6">Loading your orders…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="empty" id="orders-empty" hidden></p>
+    </section>
+
+    <section class="panel account" aria-labelledby="account-heading">
+      <h2 id="account-heading">Account</h2>
+      <div class="account-grid">
+        <dl class="details" id="account-details"></dl>
+        <form id="password-form" novalidate>
+          <h3>Change password</h3>
+          <div class="alert" role="status" aria-live="polite" hidden></div>
+          <input type="text" name="username" autocomplete="username" id="pw-username" hidden>
+          <div class="field">
+            <label for="current-password">Current password</label>
+            <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="new-password">New password <span class="optional">(min. 8 characters)</span></label>
+            <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" required>
+          </div>
+          <button class="btn btn-outline btn-sm" type="submit">Update Password</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="portal-footer container">
+    Questions about an order? Email <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>
+  </footer>
+</body>
+</html>

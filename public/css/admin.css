@@ -1,0 +1,49 @@
+/* A+ Cleaning Solutions — owner dashboard */
+
+.admin-tag { font-family: var(--font-head); font-weight: 700; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--sage-700); }
+@media (max-width: 600px) { .admin-tag { display: none; } }
+
+.admin-tabs { margin-bottom: 24px; }
+.admin-tabs .tab { font-size: .95rem; padding: 10px 18px; }
+.count:not(:empty) { display: inline-block; min-width: 22px; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--sage-100); color: var(--sage-700); font-size: .78rem; }
+
+.admin-form { margin-top: 4px; }
+.admin-form .alert { grid-column: 1 / -1; margin: 0; }
+.admin-form [hidden] { display: none; }
+.inline { display: flex; gap: 8px; }
+.inline input { flex: 1; min-width: 0; }
+
+.search { font: inherit; font-size: .95rem; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); min-width: 260px; }
+.search:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 4px var(--sage-100); }
+@media (max-width: 600px) { .search { min-width: 0; width: 100%; } }
+
+.admin-table td { vertical-align: middle; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: flex-end; }
+.link-btn { background: none; border: 0; padding: 4px 0; font: inherit; font-size: .9rem; font-weight: 700; color: var(--sage-700); cursor: pointer; white-space: nowrap; }
+.link-btn:hover { text-decoration: underline; }
+.link-btn.danger { color: var(--danger); }
+
+.status-select {
+  font-family: var(--font-head); font-weight: 700; font-size: .75rem; letter-spacing: .05em; text-transform: uppercase;
+  border: 0; border-radius: 999px; padding: 6px 10px; cursor: pointer;
+}
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100;
+  background: var(--forest); color: #fff; padding: 12px 20px; border-radius: 10px; box-shadow: var(--shadow-lg); font-weight: 600; max-width: calc(100% - 32px);
+}
+
+.inquiries { display: grid; gap: 16px; }
+.inquiry { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px 20px; }
+.inquiry p { margin: 4px 0; }
+.inquiry-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.inquiry-head strong { font-family: var(--font-head); color: var(--forest); font-size: 1.05rem; }
+.inquiry .sub { color: var(--muted); font-size: .9rem; }
+.inquiry-msg { background: var(--sage-50); padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; }
+.inquiry .row-actions { justify-content: flex-start; margin-top: 12px; gap: 10px; }
+
+@media (max-width: 760px) {
+  .row-actions { justify-content: flex-start; }
+  .admin-table td:last-child { grid-template-columns: 1fr; }
+  .admin-table td:last-child::before { content: none; }
+}
