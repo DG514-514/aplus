@@ -227,3 +227,135 @@ test('owner can check email setup and gets a plain-English reason when Resend re
   // Not available without an admin session.
   assert.equal((await post('/api/admin/email-test', {})).status, 401);
 });
+
+test('invoices: owner sends, client pays through Stripe, others cannot see or pay', async () => {
+  const crypto = require('node:crypto');
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+  process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+
+  const realFetch = global.fetch;
+  const stripeCalls = [];
+  const sessions = {};
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (!u.startsWith('https://api.stripe.com')) return realFetch(url, opts);
+    stripeCalls.push({ url: u, method: opts.method, body: opts.body ? new URLSearchParams(opts.body) : null });
+    if (opts.method === 'POST' && u.endsWith('/checkout/sessions')) {
+      const body = new URLSearchParams(opts.body);
+      const id = `cs_test_${Object.keys(sessions).length + 1}`;
+      sessions[id] = {
+        id, status: 'open', payment_status: 'unpaid', url: `https://checkout.stripe.com/c/pay/${id}`,
+        amount_total: Number(body.get('line_items[0][price_data][unit_amount]')) + Number(body.get('line_items[1][price_data][unit_amount]') || 0),
+        metadata: { invoice_number: body.get('metadata[invoice_number]') },
+      };
+      return new Response(JSON.stringify(sessions[id]), { status: 200 });
+    }
+    const id = decodeURIComponent(u.split('/checkout/sessions/')[1].split('?')[0]);
+    return new Response(JSON.stringify(sessions[id]), { status: sessions[id] ? 200 : 404 });
+  };
+
+  try {
+    const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+    const admin = adminLogin.headers.get('set-cookie').split(';')[0];
+    const aliceId = db.prepare("SELECT id FROM clients WHERE email = 'alice@example.com'").get().id;
+
+    // Validation
+    assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: [] }, { cookie: admin })).status, 400);
+    assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: [{ description: 'X', amount: '0.20' }] }, { cookie: admin })).status, 400);
+
+    const created = await post('/api/admin/invoices', {
+      clientId: aliceId, dueDate: '2026-10-15', notes: 'Thanks!', sendEmail: false,
+      items: [{ description: 'Bi-Weekly cleaning (October)', amount: '98' }, { description: 'Shared bathroom add-on', amount: '20.50' }],
+    }, { cookie: admin });
+    assert.equal(created.status, 201);
+    const { invoiceNumber } = await created.json();
+
+    const { cookie: alice } = await login('alice@example.com', 'alicepass1');
+    const { cookie: bob } = await login('bob@example.com', 'newpass123');
+
+    const list = await (await fetch(`${base}/api/invoices`, { headers: { cookie: alice } })).json();
+    const inv = list.invoices.find((i) => i.invoice_number === invoiceNumber);
+    assert.equal(inv.amount_cents, 11850);
+    assert.equal(inv.items.length, 2);
+    assert.equal(list.payments, true);
+
+    // Bob can't see or pay Alice's invoice.
+    const bobList = await (await fetch(`${base}/api/invoices`, { headers: { cookie: bob } })).json();
+    assert.ok(!bobList.invoices.some((i) => i.invoice_number === invoiceNumber));
+    assert.equal((await post(`/api/invoices/${invoiceNumber}/pay`, {}, { cookie: bob })).status, 404);
+
+    // Alice starts checkout: amounts come from the server, not the browser.
+    const pay = await post(`/api/invoices/${invoiceNumber}/pay`, {}, { cookie: alice });
+    assert.equal(pay.status, 200);
+    const { url } = await pay.json();
+    assert.match(url, /^https:\/\/checkout\.stripe\.com\//);
+    const createCall = stripeCalls.find((c) => c.method === 'POST');
+    assert.equal(createCall.body.get('line_items[0][price_data][unit_amount]'), '9800');
+    assert.equal(createCall.body.get('line_items[1][price_data][unit_amount]'), '2050');
+    assert.equal(createCall.body.get('line_items[0][price_data][currency]'), 'cad');
+    assert.equal(createCall.body.get('customer_email'), 'alice@example.com');
+    assert.match(createCall.body.get('success_url'), /\/portal\?paid=\{CHECKOUT_SESSION_ID\}$/);
+
+    // Clicking Pay again reuses the same open checkout instead of creating another.
+    const again = await (await post(`/api/invoices/${invoiceNumber}/pay`, {}, { cookie: alice })).json();
+    assert.equal(again.url, url);
+    assert.equal(stripeCalls.filter((c) => c.method === 'POST').length, 1);
+
+    // Unpaid session doesn't mark it paid.
+    const sessionId = Object.keys(sessions)[0];
+    const early = await (await post('/api/invoices/confirm', { sessionId }, { cookie: alice })).json();
+    assert.equal(early.paid, false);
+
+    // Stripe webhook with a bad signature is rejected.
+    sessions[sessionId] = { ...sessions[sessionId], status: 'complete', payment_status: 'paid', payment_intent: 'pi_123' };
+    const event = JSON.stringify({ type: 'checkout.session.completed', data: { object: sessions[sessionId] } });
+    const bad = await fetch(`${base}/api/stripe/webhook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${Math.floor(Date.now() / 1000)},v1=deadbeef` }, body: event,
+    });
+    assert.equal(bad.status, 400);
+
+    // Valid signed webhook marks the invoice paid.
+    const t = Math.floor(Date.now() / 1000);
+    const sig = crypto.createHmac('sha256', 'whsec_test').update(`${t}.${event}`).digest('hex');
+    const good = await fetch(`${base}/api/stripe/webhook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${sig}` }, body: event,
+    });
+    assert.equal(good.status, 200);
+    const paidRow = db.prepare('SELECT * FROM invoices WHERE invoice_number = ?').get(invoiceNumber);
+    assert.equal(paidRow.status, 'paid');
+    assert.equal(paidRow.paid_method, 'stripe');
+    assert.equal(paidRow.stripe_payment_intent, 'pi_123');
+
+    // Confirm after the webhook is harmless, and paying again is refused.
+    const confirmed = await (await post('/api/invoices/confirm', { sessionId }, { cookie: alice })).json();
+    assert.equal(confirmed.status, 'paid');
+    assert.equal((await post(`/api/invoices/${invoiceNumber}/pay`, {}, { cookie: alice })).status, 409);
+
+    // Manual payment + void.
+    const second = await (await post('/api/admin/invoices', {
+      clientId: aliceId, sendEmail: false, items: [{ description: 'Move-out clean', amount: '129' }],
+    }, { cookie: admin })).json();
+    const secondId = db.prepare('SELECT id FROM invoices WHERE invoice_number = ?').get(second.invoiceNumber).id;
+    assert.equal((await post(`/api/admin/invoices/${secondId}/void`, {}, { cookie: admin })).status, 200);
+    assert.equal((await post(`/api/invoices/${second.invoiceNumber}/pay`, {}, { cookie: alice })).status, 404);
+    assert.equal((await post(`/api/admin/invoices/${secondId}/mark-paid`, {}, { cookie: admin })).status, 409);
+
+    const third = await (await post('/api/admin/invoices', {
+      clientId: aliceId, sendEmail: false, items: [{ description: 'Deep clean', amount: '75' }],
+    }, { cookie: admin })).json();
+    const thirdId = db.prepare('SELECT id FROM invoices WHERE invoice_number = ?').get(third.invoiceNumber).id;
+    assert.equal((await post(`/api/admin/invoices/${thirdId}/mark-paid`, { method: 'e-transfer' }, { cookie: admin })).status, 200);
+    assert.equal(db.prepare('SELECT paid_method FROM invoices WHERE id = ?').get(thirdId).paid_method, 'e-transfer');
+
+    // Clients with invoices can't be deleted (financial records are kept).
+    assert.equal((await fetch(`${base}/api/admin/clients/${aliceId}`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json', cookie: admin }, body: '{}',
+    })).status, 409);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+  }
+});

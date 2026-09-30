@@ -35,6 +35,16 @@
       <a class="btn btn-primary btn-sm" href="mailto:info@aplus-cleaning-solutions.com?subject=Booking%20request">Book Another Clean</a>
     </div>
 
+    <div class="alert" id="pay-notice" role="status" aria-live="polite" hidden></div>
+
+    <div class="balance-banner" id="balance-banner" hidden>
+      <div>
+        <strong id="balance-title"></strong>
+        <span id="balance-sub"></span>
+      </div>
+      <a class="btn btn-light btn-sm" href="#invoices-heading">View Invoices</a>
+    </div>
+
     <section class="stats" aria-label="Summary">
       <article class="stat stat-feature">
         <span class="stat-label">Next visit</span>
@@ -56,6 +66,13 @@
         <strong class="stat-value" id="stat-plan">—</strong>
         <span class="stat-meta" id="stat-plan-meta"></span>
       </article>
+    </section>
+
+    <section class="panel" aria-labelledby="invoices-heading" id="invoices-panel" hidden>
+      <div class="panel-head">
+        <h2 id="invoices-heading">Invoices</h2>
+      </div>
+      <div class="invoice-list" id="invoice-list"></div>
     </section>
 
     <section class="panel" aria-labelledby="orders-heading">

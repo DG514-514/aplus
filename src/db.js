@@ -63,10 +63,46 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS invoices (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_number        TEXT NOT NULL UNIQUE,
+    client_id             INTEGER NOT NULL REFERENCES clients(id),
+    status                TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'paid', 'void')),
+    amount_cents          INTEGER NOT NULL,
+    due_date              TEXT,
+    notes                 TEXT,
+    inquiry_id            INTEGER,
+    stripe_session_id     TEXT,
+    stripe_payment_intent TEXT,
+    receipt_url           TEXT,
+    paid_method           TEXT,
+    paid_at               TEXT,
+    created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_invoices_client ON invoices(client_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS invoice_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id   INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    description  TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL
+  );
+`);
+
+// Columns added after launch: add them to existing databases.
+const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');
+
 // Order numbers follow the autoincrement sequence, so they are never reused even after deletes.
 db.nextOrderNumber = () => {
   const row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'orders'").get();
   return `AP-${10001 + (row ? row.seq : 0)}`;
+};
+
+db.nextInvoiceNumber = () => {
+  const row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'invoices'").get();
+  return `INV-${1001 + (row ? row.seq : 0)}`;
 };
 
 module.exports = db;

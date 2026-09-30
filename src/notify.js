@@ -84,8 +84,9 @@ function explain(status, body) {
   return `Resend responded ${status}: ${raw}`;
 }
 
-async function sendEmail({ subject, text, html, replyTo }) {
-  const { apiKey, to, from } = config();
+async function sendEmail({ subject, text, html, replyTo, to: toOverride }) {
+  const { apiKey, from } = config();
+  const to = toOverride || config().to;
   if (!apiKey) {
     throw new Error('RESEND_API_KEY is not set in Render → Environment, so no emails can be sent.');
   }
@@ -128,9 +129,68 @@ function sendTestEmail() {
   }));
 }
 
+const money = (cents) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100);
+const siteUrl = () => (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+
+// Tells a client they have a new invoice to pay in their portal.
+function sendInvoiceEmail({ client, invoice, items }) {
+  const loginUrl = `${siteUrl()}/login`;
+  const first = client.name.split(' ')[0];
+  const lines = items.map((i) => `${i.description}: ${money(i.amount_cents)}`);
+  const due = invoice.due_date ? `Due ${invoice.due_date}. ` : '';
+  const text = [
+    `Hi ${first},`,
+    '',
+    `You have a new invoice (${invoice.invoice_number}) from A+ Cleaning Solutions for ${money(invoice.amount_cents)}.`,
+    '',
+    ...lines,
+    invoice.notes ? `\n${invoice.notes}` : null,
+    '',
+    `${due}Sign in to view and pay securely online: ${loginUrl}`,
+    '',
+    'Thank you!',
+    'A+ Cleaning Solutions',
+  ].filter((l) => l !== null).join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px">
+      <p>Hi ${escapeHtml(first)},</p>
+      <p>You have a new invoice <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0">
+        ${items.map((i) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e3e0d8">${escapeHtml(i.description)}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e3e0d8;text-align:right">${money(i.amount_cents)}</td></tr>`).join('')}
+        <tr><td style="padding:10px 0;font-weight:bold">Total</td>
+          <td style="padding:10px 0;text-align:right;font-weight:bold">${money(invoice.amount_cents)}</td></tr>
+      </table>
+      ${invoice.notes ? `<p style="white-space:pre-wrap;color:#66705f">${escapeHtml(invoice.notes)}</p>` : ''}
+      ${invoice.due_date ? `<p>Due <strong>${escapeHtml(invoice.due_date)}</strong>.</p>` : ''}
+      <p style="margin:24px 0"><a href="${escapeHtml(loginUrl)}" style="background:#809678;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">View &amp; Pay Invoice</a></p>
+      <p style="color:#66705f">Thank you!<br>A+ Cleaning Solutions</p>
+    </div>`;
+  return track(sendEmail({
+    to: [client.email],
+    replyTo: config().to[0],
+    subject: `Invoice ${invoice.invoice_number} from A+ Cleaning Solutions: ${money(invoice.amount_cents)}`,
+    text,
+    html,
+  }));
+}
+
+// Tells the business a client paid.
+function sendPaymentAlert({ client, invoice }) {
+  const text = `${client.name} (${client.email}) paid invoice ${invoice.invoice_number}: ${money(invoice.amount_cents)}.`;
+  return track(sendEmail({
+    replyTo: client.email,
+    subject: `Payment received: ${invoice.invoice_number} (${money(invoice.amount_cents)})`,
+    text,
+    html: `<p style="font-family:Arial,sans-serif">💳 ${escapeHtml(text)}</p>`,
+  }));
+}
+
 function emailStatus() {
   const { apiKey, to, from } = config();
   return { keySet: Boolean(apiKey), to, from, last: { ...lastResult } };
 }
 
-module.exports = { sendInquiryAlert, sendTestEmail, emailStatus, buildInquiryEmail };
+module.exports = {
+  sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, emailStatus, buildInquiryEmail,
+};

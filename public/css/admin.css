@@ -50,3 +50,20 @@
 
 .email-status { white-space: pre-line; margin: 0 0 12px; color: var(--ink); }
 .email-panel .alert { margin: 0; word-break: break-word; }
+
+.payments-status { margin: -4px 0 18px; padding: 10px 14px; border-radius: 8px; background: var(--sage-50); font-size: .95rem; }
+.payments-status.warn { background: var(--amber-bg); color: var(--amber); }
+.invoice-items { display: grid; gap: 8px; }
+.item-row { display: grid; grid-template-columns: 1fr 140px auto; gap: 8px; align-items: center; }
+.item-row input { width: 100%; font: inherit; font-size: 1rem; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.item-row input:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 4px var(--sage-100); }
+.items-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.invoice-total { font-size: 1.05rem; }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--sage-700); }
+.badge-open { background: var(--amber-bg); color: var(--amber); }
+.badge-overdue { background: var(--danger-bg); color: var(--danger); }
+.badge-paid { background: var(--sage-100); color: var(--sage-700); }
+.badge-void { background: #eee; color: #777; }
+.chip { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--sage-100); color: var(--sage-700); margin-left: 8px; }
+@media (max-width: 600px) { .item-row { grid-template-columns: 1fr 100px auto; } }

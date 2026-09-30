@@ -124,3 +124,31 @@
 @media (max-width: 800px) { .account-grid { grid-template-columns: 1fr; } .details div { grid-template-columns: 110px 1fr; } }
 
 .portal-footer { padding: 8px 24px 48px; color: var(--muted); font-size: .92rem; text-align: center; }
+
+/* ---------- Invoices ---------- */
+
+#pay-notice { margin-bottom: 20px; }
+.balance-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  background: var(--amber-bg); border: 1px solid #ecdcb4; color: var(--ink); border-radius: var(--radius); padding: 16px 22px; margin-bottom: 24px;
+}
+.balance-banner strong { display: block; font-family: var(--font-head); color: var(--forest); font-size: 1.05rem; }
+.balance-banner span { color: var(--muted); font-size: .95rem; }
+.balance-banner .btn-light { border: 1.5px solid var(--sage); }
+
+.invoice-list { display: grid; gap: 16px; }
+.invoice-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 20px 22px; }
+.invoice-card.is-open { border-color: #e2cf9f; background: #fffdf7; }
+.invoice-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.invoice-top h3 { margin: 0 0 2px; font-size: 1.1rem; }
+.invoice-top .sub { color: var(--muted); font-size: .9rem; }
+.invoice-lines { width: 100%; border-collapse: collapse; font-size: .96rem; }
+.invoice-lines td { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.invoice-lines td:last-child { text-align: right; white-space: nowrap; }
+.invoice-lines tr.total td { border-bottom: 0; font-weight: 800; font-family: var(--font-head); color: var(--forest); padding-top: 12px; }
+.invoice-note { color: var(--muted); font-size: .92rem; margin: 10px 0 0; white-space: pre-wrap; }
+.invoice-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+.invoice-actions .secure { font-size: .85rem; color: var(--muted); }
+.badge-open { background: var(--amber-bg); color: var(--amber); }
+.badge-overdue { background: var(--danger-bg); color: var(--danger); }
+.badge-paid { background: var(--sage-100); color: var(--sage-700); }
