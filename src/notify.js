@@ -4,6 +4,7 @@
 // Uses Resend (https://resend.com). Configure with:
 //   RESEND_API_KEY  — API key from Resend (required to send)
 //   NOTIFY_EMAIL    — where alerts go, e.g. info@aplus-cleaning-solutions.com
+//   SITE_URL        — public address used for links, e.g. https://aplus-cleaning-solutions.com
 //   MAIL_FROM       — optional sender once your domain is verified in Resend,
 //                     e.g. "A+ Cleaning Website <website@aplus-cleaning-solutions.com>"
 
@@ -59,7 +60,7 @@ async function sendInquiryAlert(inquiry) {
   const to = process.env.NOTIFY_EMAIL;
   if (!apiKey || !to) return { skipped: true };
 
-  const { subject, text, html } = buildInquiryEmail(inquiry, process.env.RENDER_EXTERNAL_URL || process.env.SITE_URL);
+  const { subject, text, html } = buildInquiryEmail(inquiry, process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL);
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
