@@ -1,0 +1,28 @@
+{
+  "name": "aplus-cleaning-solutions",
+  "version": "1.0.0",
+  "description": "A+ Cleaning Solutions website and client portal",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "seed": "node --disable-warning=ExperimentalWarning scripts/seed.js",
+    "manage": "node --disable-warning=ExperimentalWarning scripts/manage.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DG514-514/aplus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DG514-514/aplus/issues"
+  },
+  "homepage": "https://github.com/DG514-514/aplus#readme",
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  }
+}

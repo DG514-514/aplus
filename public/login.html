@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Client Login | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#809678">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <script src="/js/login.js" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-layout">
+    <section class="auth-panel">
+      <a class="auth-logo" href="/"><img src="/img/logo.png" alt="A+ Cleaning Solutions — back to home" width="800" height="333"></a>
+      <div class="auth-form-wrap">
+        <h1 class="auth-title">Client login</h1>
+        <p class="auth-sub">Sign in to view your upcoming visits and order history.</p>
+
+        <form id="login-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" required>
+              <button type="button" class="reveal-pw" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Sign In</button>
+        </form>
+
+        <p class="auth-help">
+          Forgot your password or don’t have a login yet? Email
+          <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>
+          and we’ll get you set up.
+        </p>
+      </div>
+      <a class="auth-back" href="/">← Back to website</a>
+    </section>
+
+    <aside class="auth-art" aria-hidden="true">
+      <div class="auth-art-inner">
+        <p class="auth-quote">Clean dorms.<br><span>No hassle.</span></p>
+        <p>Leave the cleaning to the pros — so you can focus on being a student.</p>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>
