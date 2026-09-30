@@ -184,6 +184,31 @@ p { margin: 0 0 1em; }
 @media (max-width: 1024px) { .plans { grid-template-columns: repeat(2, 1fr); } .plan.featured { transform: none; } }
 @media (max-width: 600px) { .plans { grid-template-columns: 1fr; } }
 
+/* ---------- Campuses ---------- */
+
+.campuses { padding: 88px 0; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.campuses .section-head { margin-bottom: 40px; }
+.campus-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+.campus {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  padding: 26px 12px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--cream);
+  transition: transform .25s, box-shadow .25s, border-color .25s;
+}
+.campus:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: var(--sage-100); }
+.campus-mark {
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 8px;
+  background: var(--sage-100); color: var(--sage-700); border: 2px solid #fff; box-shadow: 0 0 0 1.5px var(--sage-100);
+  font-family: var(--font-head); font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em;
+}
+.campus-mark.small { font-size: .82rem; }
+.campus-name { font-family: var(--font-head); font-weight: 700; font-size: .95rem; line-height: 1.25; color: var(--forest); }
+.campus-city { font-size: .85rem; color: var(--muted); }
+.campus-note { text-align: center; color: var(--muted); margin: 32px 0 0; font-size: .98rem; }
+.campus-note a { font-weight: 700; }
+.campus-note span { display: block; font-size: .78rem; margin-top: 8px; opacity: .8; }
+@media (max-width: 1024px) { .campus-list { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .campus-list { grid-template-columns: repeat(2, 1fr); gap: 12px; } .campuses { padding: 64px 0; } }
+
 /* ---------- Steps ---------- */
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; counter-reset: step; }
