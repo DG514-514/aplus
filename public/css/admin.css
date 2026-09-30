@@ -67,3 +67,11 @@
 .badge-void { background: #eee; color: #777; }
 .chip { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--sage-100); color: var(--sage-700); margin-left: 8px; }
 @media (max-width: 600px) { .item-row { grid-template-columns: 1fr 100px auto; } }
+
+/* ---------- New client pop-up ---------- */
+.modal { border: 0; border-radius: var(--radius); padding: 28px; width: min(640px, calc(100% - 32px)); box-shadow: var(--shadow-lg); color: var(--ink); }
+.modal::backdrop { background: rgba(44, 53, 41, .45); }
+.modal-head h2 { font-size: 1.35rem; margin: 0 0 4px; }
+.modal-head p { margin: 0; font-size: .95rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+option.add-new { font-weight: 700; }
