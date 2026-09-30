@@ -5,6 +5,7 @@ const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
 const admin = require('./admin');
+const { sendInquiryAlert } = require('./notify');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -135,6 +136,9 @@ app.post('/api/inquiries', (req, res) => {
     VALUES (:name, :email, :phone, :residence, :plan, :message)
   `).run(inquiry);
   res.status(201).json({ ok: true });
+
+  // Email alert is best-effort: the request is already saved in the dashboard.
+  sendInquiryAlert(inquiry).catch((err) => console.error('Quote request email failed:', err.message));
 });
 
 app.use('/api/admin', admin.router);

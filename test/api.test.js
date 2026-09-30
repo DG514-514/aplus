@@ -164,3 +164,33 @@ test('admin area requires owner credentials and can manage clients and orders', 
   const { orders } = await (await fetch(`${base}/api/orders`, { headers: { cookie: caseyCookie } })).json();
   assert.deepEqual(orders.map((o) => o.status), ['completed']);
 });
+
+test('quote requests trigger an email alert when email is configured', async () => {
+  const realFetch = global.fetch;
+  const sent = [];
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) {
+      sent.push(JSON.parse(opts.body));
+      return new Response('{"id":"test"}', { status: 200 });
+    }
+    return realFetch(url, opts);
+  };
+  process.env.RESEND_API_KEY = 're_test';
+  process.env.NOTIFY_EMAIL = 'info@example.com';
+  try {
+    const res = await post('/api/inquiries',
+      { name: 'Jamie <b>Lee</b>', email: 'jamie@example.com', plan: 'Monthly', message: 'Hi there' });
+    assert.equal(res.status, 201);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].to, ['info@example.com']);
+    assert.equal(sent[0].reply_to, 'jamie@example.com');
+    assert.match(sent[0].subject, /Jamie <b>Lee<\/b> \(Monthly\)/);
+    assert.ok(sent[0].html.includes('Jamie &lt;b&gt;Lee&lt;/b&gt;'));
+    assert.ok(!sent[0].html.includes('<b>Lee</b>'));
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.NOTIFY_EMAIL;
+  }
+});
