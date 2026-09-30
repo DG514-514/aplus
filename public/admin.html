@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner Dashboard | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <link rel="stylesheet" href="/css/admin.css">
+  <script src="/js/admin.js" defer></script>
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <div class="container portal-nav">
+      <a href="/" class="brand"><img src="/img/logo.png" alt="A+ Cleaning Solutions" width="800" height="333"></a>
+      <div class="portal-user">
+        <span class="admin-tag">Owner dashboard</span>
+        <a class="btn btn-outline btn-sm" href="/" target="_blank" rel="noopener">View Site</a>
+        <button class="btn btn-outline btn-sm" id="logout-btn" type="button">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container portal-main">
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <div class="tabs admin-tabs" role="tablist" aria-label="Sections">
+      <button role="tab" type="button" class="tab" aria-selected="true" data-view="orders">Orders <span class="count" id="count-orders"></span></button>
+      <button role="tab" type="button" class="tab" aria-selected="false" data-view="clients">Clients <span class="count" id="count-clients"></span></button>
+      <button role="tab" type="button" class="tab" aria-selected="false" data-view="inquiries">Quote Requests <span class="count" id="count-inquiries"></span></button>
+    </div>
+
+    <!-- Orders -->
+    <section class="view" id="view-orders">
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="order-form-title">Add an order</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="order-cancel" hidden>Cancel Edit</button>
+        </div>
+        <form id="order-form" class="form-grid admin-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="o-client">Client</label>
+            <select id="o-client" name="clientId" required></select>
+          </div>
+          <div class="field">
+            <label for="o-date">Service date</label>
+            <input id="o-date" name="date" type="date" required>
+          </div>
+          <div class="field">
+            <label for="o-service">Service</label>
+            <input id="o-service" name="service" list="services" required placeholder="Dorm Room Clean">
+            <datalist id="services">
+              <option value="Dorm Room Clean"></option>
+              <option value="Dorm Room + Shared Bathroom"></option>
+              <option value="Shared Space Clean"></option>
+              <option value="Move-In Deep Clean"></option>
+              <option value="Move-Out Deep Clean"></option>
+            </datalist>
+          </div>
+          <div class="field">
+            <label for="o-plan">Plan</label>
+            <select id="o-plan" name="plan">
+              <option>Weekly</option>
+              <option selected>Bi-Weekly</option>
+              <option>Monthly</option>
+              <option>One-Time</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="o-amount">Amount ($)</label>
+            <input id="o-amount" name="amount" type="number" min="0" step="0.01" required placeholder="49.00">
+          </div>
+          <div class="field">
+            <label for="o-status">Status</label>
+            <select id="o-status" name="status">
+              <option value="scheduled">Scheduled</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="o-location">Location <span class="optional">(leave blank to use the client’s residence &amp; room)</span></label>
+            <input id="o-location" name="location">
+          </div>
+          <div class="field full">
+            <label for="o-notes">Notes for the client <span class="optional">(optional — shown in their portal)</span></label>
+            <textarea id="o-notes" name="notes" rows="2"></textarea>
+          </div>
+          <div class="full"><button class="btn btn-primary" type="submit" id="order-submit">Add Order</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>All orders</h2>
+          <input type="search" id="order-search" class="search" placeholder="Search client, order #, service…" aria-label="Search orders">
+        </div>
+        <div class="table-wrap">
+          <table class="orders admin-table">
+            <thead><tr><th>Date</th><th>Order</th><th>Client</th><th>Service</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead>
+            <tbody id="orders-body"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="orders-empty" hidden>No orders yet. Add a client first, then add their order above.</p>
+      </div>
+    </section>
+
+    <!-- Clients -->
+    <section class="view" id="view-clients" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="client-form-title">Add a client login</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="client-cancel" hidden>Cancel Edit</button>
+        </div>
+        <form id="client-form" class="form-grid admin-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="c-name">Full name</label>
+            <input id="c-name" name="name" required>
+          </div>
+          <div class="field">
+            <label for="c-email">Email (their username)</label>
+            <input id="c-email" name="email" type="email" required>
+          </div>
+          <div class="field" id="c-password-field">
+            <label for="c-password">Temporary password</label>
+            <div class="inline">
+              <input id="c-password" name="password" required minlength="8" autocomplete="off">
+              <button type="button" class="btn btn-outline btn-sm" id="gen-password">Generate</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="c-phone">Phone <span class="optional">(optional)</span></label>
+            <input id="c-phone" name="phone" type="tel">
+          </div>
+          <div class="field">
+            <label for="c-residence">Residence</label>
+            <input id="c-residence" name="residence" placeholder="Maple Hall">
+          </div>
+          <div class="field">
+            <label for="c-room">Room</label>
+            <input id="c-room" name="room" placeholder="214">
+          </div>
+          <div class="full"><button class="btn btn-primary" type="submit" id="client-submit">Create Client Login</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>All clients</h2>
+          <input type="search" id="client-search" class="search" placeholder="Search name, email, residence…" aria-label="Search clients">
+        </div>
+        <div class="table-wrap">
+          <table class="orders admin-table">
+            <thead><tr><th>Client</th><th>Residence</th><th>Phone</th><th class="num">Orders</th><th></th></tr></thead>
+            <tbody id="clients-body"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="clients-empty" hidden>No clients yet — add your first one above.</p>
+      </div>
+    </section>
+
+    <!-- Inquiries -->
+    <section class="view" id="view-inquiries" hidden>
+      <div class="panel">
+        <div class="panel-head"><h2>Quote requests from the website</h2></div>
+        <div id="inquiries-list" class="inquiries"></div>
+        <p class="empty" id="inquiries-empty" hidden>No new requests. They’ll appear here when someone fills in the “Book Today” form.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

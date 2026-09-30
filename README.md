@@ -19,9 +19,23 @@ npm start         # http://localhost:3000
 
 Demo login (after `npm run seed`): `demo@aplus-cleaning-solutions.com` / `CleanDorm2026`
 
-## Managing clients and orders
+## Owner dashboard (`/admin`)
 
-Clients don't self-register — you create their login when they book:
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your hosting settings, then sign in at `/admin` to:
+
+- create client logins (with a generated temporary password to send them),
+- add, edit and delete orders and change their status (scheduled / completed / cancelled),
+- see quote requests from the website's "Book Today" form and turn them into clients in one click.
+
+## Deploying (Render)
+
+`render.yaml` sets everything up: a Node web service on the Starter plan with a 1 GB persistent disk for the
+database, auto-deploying from `main`. In Render choose **New → Blueprint**, pick this repository, enter
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` when prompted, then add your domain under **Settings → Custom Domains**.
+
+## Command-line admin (optional)
+
+The same tasks can be done from a terminal:
 
 ```bash
 npm run manage -- add-client --email student@school.ca --name "Sam Lee" --password "TempPass123" \
@@ -44,6 +58,7 @@ npm run manage -- inquiries     # booking/quote requests from the website form
 | `PORT`        | `3000`          | HTTP port                                                       |
 | `DB_PATH`     | `data/aplus.db` | SQLite database file (keep on persistent storage & back it up)  |
 | `NODE_ENV`    | —               | `production` marks the session cookie `Secure` (HTTPS only)     |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | — | Owner dashboard login (dashboard is disabled until both are set) |
 | `TRUST_PROXY` | —               | Set (e.g. `1`) when behind a load balancer / reverse proxy      |
 
 ## Security
@@ -58,6 +73,7 @@ npm run manage -- inquiries     # booking/quote requests from the website form
 ```
 src/server.js      Express app: pages, auth & orders API, inquiry form
 src/auth.js        Password hashing, sessions, rate limiting
+src/admin.js       Owner dashboard API
 src/db.js          SQLite schema (clients, orders, sessions, inquiries)
 scripts/manage.js  Admin CLI
 scripts/seed.js    Demo data

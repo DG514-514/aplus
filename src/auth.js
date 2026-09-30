@@ -119,6 +119,9 @@ function clearLoginAttempts(key) {
 }
 
 module.exports = {
+  SESSION_TTL_MS,
+  sha256,
+  readCookie,
   DUMMY_HASH,
   hashPassword,
   verifyPassword,

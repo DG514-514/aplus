@@ -28,14 +28,14 @@ document.addEventListener('DOMContentLoaded', () => {
     submit.disabled = true;
     submit.textContent = 'Signing in…';
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(form.dataset.endpoint || '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: password.value }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Unable to sign in right now.');
-      window.location.assign('/portal');
+      window.location.assign(form.dataset.redirect || '/portal');
     } catch (err) {
       alertBox.textContent = err.message;
       alertBox.hidden = false;

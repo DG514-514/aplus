@@ -4,6 +4,7 @@ const path = require('node:path');
 const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
+const admin = require('./admin');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -136,11 +137,20 @@ app.post('/api/inquiries', (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+app.use('/api/admin', admin.router);
+
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 
 /* ---------- Pages ---------- */
 
-app.get(['/login.html', '/portal.html'], (req, res) => res.redirect(301, req.path.replace('.html', '')));
+app.get('/admin', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(PUBLIC_DIR, admin.isAdmin(req) ? 'admin.html' : 'admin-login.html'));
+});
+
+app.get(['/login.html', '/portal.html', '/admin.html', '/admin-login.html'], (req, res) => res.redirect(301, req.path.replace(/(-login)?\.html$/, '')));
 
 app.get('/login', (req, res) => {
   if (req.client) return res.redirect('/portal');

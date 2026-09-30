@@ -123,3 +123,44 @@ test('inquiry form stores valid leads and validates email', async () => {
   const row = db.prepare('SELECT * FROM inquiries WHERE email = ?').get('sam@example.com');
   assert.equal(row.plan, 'Weekly');
 });
+
+test('admin area requires owner credentials and can manage clients and orders', async () => {
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+
+  const denied = await fetch(`${base}/api/admin/overview`);
+  assert.equal(denied.status, 401);
+  assert.equal((await post('/api/admin/login', { email: 'owner@example.com', password: 'wrong' })).status, 401);
+
+  // A client session must not grant admin access.
+  const { cookie: clientCookie } = await login('alice@example.com', 'alicepass1');
+  assert.equal((await fetch(`${base}/api/admin/overview`, { headers: { cookie: clientCookie } })).status, 401);
+
+  const res = await post('/api/admin/login', { email: 'Owner@Example.com', password: 'owner-secret-1' });
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+
+  const created = await post('/api/admin/clients',
+    { name: 'Casey New', email: 'casey@example.com', password: 'temp-pass-1', residence: 'Oak Hall', room: '5' }, { cookie });
+  assert.equal(created.status, 201);
+  const { id } = await created.json();
+
+  const order = await post('/api/admin/orders',
+    { clientId: id, date: '2026-11-01', service: 'Dorm Room Clean', plan: 'Weekly', amount: '39.50', status: 'scheduled' }, { cookie });
+  assert.equal(order.status, 201);
+
+  const overview = await (await fetch(`${base}/api/admin/overview`, { headers: { cookie } })).json();
+  const casey = overview.orders.find((o) => o.client_id === id);
+  assert.equal(casey.amount_cents, 3950);
+  assert.equal(casey.location, 'Oak Hall, Rm 5');
+
+  const patched = await fetch(`${base}/api/admin/orders/${casey.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify({ status: 'completed' }),
+  });
+  assert.equal(patched.status, 200);
+
+  // New client can sign in and sees the order.
+  const { cookie: caseyCookie } = await login('casey@example.com', 'temp-pass-1');
+  const { orders } = await (await fetch(`${base}/api/orders`, { headers: { cookie: caseyCookie } })).json();
+  assert.deepEqual(orders.map((o) => o.status), ['completed']);
+});
