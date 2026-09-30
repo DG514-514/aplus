@@ -435,14 +435,45 @@ function renderPaymentsStatus() {
   }
 }
 
+// Standard services offered in the line-item dropdown (prices in dollars).
+const SERVICES = [
+  { id: 'studio', name: 'Studio Standard Clean', price: 110 },
+  { id: '1b1b', name: '1 Bedroom / 1 Bathroom Standard Clean', price: 140, bedrooms: '1', bathrooms: '1' },
+  { id: '2b2b', name: '2 Bedroom / 2 Bathroom Standard Clean', price: 160, bedrooms: '2', bathrooms: '2' },
+  { id: '4b4b', name: '4 Bedroom / 4 Bathroom Standard Clean', price: 220, bedrooms: '4', bathrooms: '4' },
+];
+
+function applyService(row, serviceId) {
+  const service = SERVICES.find((s) => s.id === serviceId);
+  if (!service) return;
+  row.querySelector('.item-desc').value = service.name;
+  row.querySelector('.item-amount').value = service.price.toFixed(2);
+  updateInvoiceTotal();
+}
+
 function addItemRow(description = '', amount = '') {
+  const picker = el('select', { class: 'item-service', 'aria-label': 'Service' },
+    el('option', { value: '' }, 'Choose a service…'),
+    ...SERVICES.map((s) => el('option', { value: s.id }, s.name)),
+    el('option', { value: 'custom' }, 'Custom item…'));
   const row = el('div', { class: 'item-row' },
+    picker,
     el('input', { class: 'item-desc', placeholder: 'Description, e.g. Bi-Weekly dorm cleaning (October)', 'aria-label': 'Description', value: description, oninput: updateInvoiceTotal }),
     el('input', { class: 'item-amount', type: 'number', min: '0', step: '0.01', placeholder: 'Amount $', 'aria-label': 'Amount', value: amount, oninput: updateInvoiceTotal }),
     el('button', {
       type: 'button', class: 'link-btn danger', 'aria-label': 'Remove line item',
       onclick: () => { if ($('invoice-items').children.length > 1) row.remove(); updateInvoiceTotal(); },
     }, '✕'));
+  picker.addEventListener('change', () => {
+    if (picker.value === 'custom') {
+      row.querySelector('.item-desc').value = '';
+      row.querySelector('.item-amount').value = '';
+      row.querySelector('.item-desc').focus();
+      updateInvoiceTotal();
+    } else {
+      applyService(row, picker.value);
+    }
+  });
   $('invoice-items').append(row);
   updateInvoiceTotal();
   return row;
@@ -477,10 +508,19 @@ function openInvoiceFor(client, inquiry = null) {
   $('i-client').value = String(client.id);
   state.invoiceInquiry = inquiry;
   if (inquiry) {
-    const size = roomSummary(inquiry);
-    const desc = [inquiry.plan && `${inquiry.plan} cleaning`, inquiry.residence].filter(Boolean).join(' — ')
-      + (size ? ` (${size})` : '');
-    $('invoice-items').querySelector('.item-desc').value = desc || 'Cleaning service';
+    const row = $('invoice-items').querySelector('.item-row');
+    // Pre-pick the standard service matching the requested bedrooms/bathrooms, if there is one.
+    const match = SERVICES.find((s) => s.bedrooms && s.bedrooms === inquiry.bedrooms && s.bathrooms === inquiry.bathrooms);
+    if (match) {
+      row.querySelector('.item-service').value = match.id;
+      applyService(row, match.id);
+      if (inquiry.residence) row.querySelector('.item-desc').value += ` — ${inquiry.residence}`;
+    } else {
+      const size = roomSummary(inquiry);
+      const desc = [inquiry.plan && `${inquiry.plan} cleaning`, inquiry.residence].filter(Boolean).join(' — ')
+        + (size ? ` (${size})` : '');
+      row.querySelector('.item-desc').value = desc || 'Cleaning service';
+    }
   }
   $('invoice-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   $('invoice-items').querySelector('.item-amount').focus({ preventScroll: true });

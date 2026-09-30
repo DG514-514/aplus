@@ -54,9 +54,9 @@
 .payments-status { margin: -4px 0 18px; padding: 10px 14px; border-radius: 8px; background: var(--sage-50); font-size: .95rem; }
 .payments-status.warn { background: var(--amber-bg); color: var(--amber); }
 .invoice-items { display: grid; gap: 8px; }
-.item-row { display: grid; grid-template-columns: 1fr 140px auto; gap: 8px; align-items: center; }
-.item-row input { width: 100%; font: inherit; font-size: 1rem; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
-.item-row input:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 4px var(--sage-100); }
+.item-row { display: grid; grid-template-columns: 320px 1fr 130px auto; gap: 8px; align-items: center; }
+.item-row input, .item-row select { width: 100%; font: inherit; font-size: 1rem; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.item-row input:focus, .item-row select:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 4px var(--sage-100); }
 .items-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .invoice-total { font-size: 1.05rem; }
 .check { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
@@ -66,7 +66,11 @@
 .badge-paid { background: var(--sage-100); color: var(--sage-700); }
 .badge-void { background: #eee; color: #777; }
 .chip { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--sage-100); color: var(--sage-700); margin-left: 8px; }
-@media (max-width: 600px) { .item-row { grid-template-columns: 1fr 100px auto; } }
+@media (max-width: 900px) {
+  .item-row { grid-template-columns: 1fr 110px auto; }
+  .item-row .item-service { grid-column: 1 / -1; }
+}
+.item-row select { background: #fff; color: var(--ink); }
 
 /* ---------- New client pop-up ---------- */
 .modal { border: 0; border-radius: var(--radius); padding: 28px; width: min(640px, calc(100% - 32px)); box-shadow: var(--shadow-lg); color: var(--ink); }
