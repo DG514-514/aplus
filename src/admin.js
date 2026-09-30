@@ -248,9 +248,16 @@ router.post('/invoices', async (req, res) => {
 
   const dueDate = str(b.dueDate, 10);
   if (dueDate && !DATE_RE.test(dueDate)) return res.status(400).json({ error: 'Pick a valid due date.' });
+  const serviceDate = str(b.serviceDate, 10);
+  if (serviceDate && !DATE_RE.test(serviceDate)) return res.status(400).json({ error: 'Pick a valid service date.' });
+  const serviceTime = str(b.serviceTime, 5);
+  if (serviceTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(serviceTime)) return res.status(400).json({ error: 'Pick a valid service time.' });
+  if (serviceTime && !serviceDate) return res.status(400).json({ error: 'Add a service date to go with the time.' });
   const inquiryId = Number(b.inquiryId) || null;
 
-  const invoice = invoices.create({ clientId: client.id, items, dueDate, notes: str(b.notes, 1000), inquiryId });
+  const invoice = invoices.create({
+    clientId: client.id, items, dueDate, serviceDate, serviceTime, notes: str(b.notes, 1000), inquiryId,
+  });
 
   let email = 'skipped';
   if (b.sendEmail !== false) {

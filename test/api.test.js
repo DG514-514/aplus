@@ -264,9 +264,12 @@ test('invoices: owner sends, client pays through Stripe, others cannot see or pa
     // Validation
     assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: [] }, { cookie: admin })).status, 400);
     assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: [{ description: 'X', amount: '0.20' }] }, { cookie: admin })).status, 400);
+    const oneItem = [{ description: 'Clean', amount: '50' }];
+    assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: oneItem, serviceDate: '2026-10-12', serviceTime: '25:00' }, { cookie: admin })).status, 400);
+    assert.equal((await post('/api/admin/invoices', { clientId: aliceId, items: oneItem, serviceTime: '10:00' }, { cookie: admin })).status, 400);
 
     const created = await post('/api/admin/invoices', {
-      clientId: aliceId, dueDate: '2026-10-15', notes: 'Thanks!', sendEmail: false,
+      clientId: aliceId, dueDate: '2026-10-15', serviceDate: '2026-10-12', serviceTime: '14:30', notes: 'Thanks!', sendEmail: false,
       items: [{ description: 'Bi-Weekly cleaning (October)', amount: '98' }, { description: 'Shared bathroom add-on', amount: '20.50' }],
     }, { cookie: admin });
     assert.equal(created.status, 201);
@@ -278,6 +281,8 @@ test('invoices: owner sends, client pays through Stripe, others cannot see or pa
     const list = await (await fetch(`${base}/api/invoices`, { headers: { cookie: alice } })).json();
     const inv = list.invoices.find((i) => i.invoice_number === invoiceNumber);
     assert.equal(inv.amount_cents, 11850);
+    assert.equal(inv.service_date, '2026-10-12');
+    assert.equal(inv.service_time, '14:30');
     assert.equal(inv.items.length, 2);
     assert.equal(list.payments, true);
 

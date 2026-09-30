@@ -233,6 +233,15 @@ function renderInvoices(invoices, paymentsEnabled) {
       el('tr', { class: 'total' }, el('td', {}, 'Total'), el('td', {}, money.format(inv.amount_cents / 100)))));
 
     const meta = [`Issued ${fmtDate(inv.created_at.slice(0, 10))}`];
+    let service = null;
+    if (inv.service_date) {
+      let when = fmtDate(inv.service_date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      if (inv.service_time) {
+        const [h, m] = inv.service_time.split(':').map(Number);
+        when += ` at ${new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}`;
+      }
+      service = el('p', { class: 'invoice-service' }, '🗓️ ', el('strong', {}, 'Service: '), when);
+    }
     if (inv.status === 'open' && inv.due_date) meta.push(`Due ${fmtDate(inv.due_date)}`);
     if (inv.status === 'paid' && inv.paid_at) meta.push(`Paid ${fmtDate(inv.paid_at.slice(0, 10))}`);
 
@@ -252,6 +261,7 @@ function renderInvoices(invoices, paymentsEnabled) {
       el('div', { class: 'invoice-top' },
         el('div', {}, el('h3', {}, `Invoice ${inv.invoice_number}`), el('span', { class: 'sub' }, meta.join(' · '))),
         el('span', { class: `badge badge-${cls}` }, label)),
+      service,
       lines,
       inv.notes ? el('p', { class: 'invoice-note' }, inv.notes) : null,
       actions.children.length ? actions : null));
