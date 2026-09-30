@@ -20,7 +20,9 @@ function buildInquiryEmail(inquiry, siteUrl) {
     ['Email', inquiry.email],
     ['Phone', inquiry.phone],
     ['Plan', inquiry.plan],
-    ['Residence & room', inquiry.residence],
+    ['Residence', inquiry.residence],
+    ['Bedrooms', inquiry.bedrooms],
+    ['Bathrooms', inquiry.bathrooms],
     ['Message', inquiry.message],
   ].filter(([, value]) => value);
 

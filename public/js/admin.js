@@ -345,6 +345,11 @@ async function submitClient(e) {
 
 /* ---------- Inquiries ---------- */
 
+// "2 bed / 1.5 bath" from a quote request's room counts.
+function roomSummary(inq) {
+  return [inq.bedrooms && `${inq.bedrooms} bed`, inq.bathrooms && `${inq.bathrooms} bath`].filter(Boolean).join(' / ');
+}
+
 function renderInquiries() {
   const list = $('inquiries-list');
   list.replaceChildren();
@@ -359,7 +364,7 @@ function renderInquiries() {
       el('p', {},
         el('a', { href: `mailto:${inq.email}` }, inq.email),
         inq.phone ? ` · ${inq.phone}` : null),
-      el('p', { class: 'sub' }, [inq.plan, inq.residence].filter(Boolean).join(' · ') || ''),
+      el('p', { class: 'sub' }, [inq.plan, inq.residence, roomSummary(inq)].filter(Boolean).join(' · ') || ''),
       inq.message ? el('p', { class: 'inquiry-msg' }, inq.message) : null,
       el('div', { class: 'row-actions' },
         inq.invoice_number
@@ -472,7 +477,9 @@ function openInvoiceFor(client, inquiry = null) {
   $('i-client').value = String(client.id);
   state.invoiceInquiry = inquiry;
   if (inquiry) {
-    const desc = [inquiry.plan && `${inquiry.plan} cleaning`, inquiry.residence].filter(Boolean).join(' — ');
+    const size = roomSummary(inquiry);
+    const desc = [inquiry.plan && `${inquiry.plan} cleaning`, inquiry.residence].filter(Boolean).join(' — ')
+      + (size ? ` (${size})` : '');
     $('invoice-items').querySelector('.item-desc').value = desc || 'Cleaning service';
   }
   $('invoice-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
