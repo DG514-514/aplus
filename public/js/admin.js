@@ -78,14 +78,66 @@ function showView(view) {
 
 /* ---------- Orders ---------- */
 
+const NEW_CLIENT = '__new';
+
 function renderClientOptions() {
   for (const select of [$('o-client'), $('i-client')]) {
     const current = select.value;
-    select.replaceChildren(el('option', { value: '' }, state.clients.length ? 'Choose a client…' : 'Add a client first'));
+    select.replaceChildren(
+      el('option', { value: '' }, 'Choose a client…'),
+      el('option', { value: NEW_CLIENT, class: 'add-new' }, '+ Add new client…'));
     for (const c of state.clients) {
       select.append(el('option', { value: String(c.id) }, `${c.name} — ${c.email}`));
     }
-    select.value = current;
+    select.value = current === NEW_CLIENT ? '' : current;
+    select.dataset.previous = select.value;
+  }
+}
+
+/* ---------- Add a client from a dropdown ---------- */
+
+let newClientTarget = null;
+
+function openNewClientDialog(select) {
+  newClientTarget = select;
+  const form = $('new-client-form');
+  form.reset();
+  formError(form, '');
+  form.password.value = generatePassword();
+  $('new-client-dialog').showModal();
+  form.name.focus();
+}
+
+function closeNewClientDialog() {
+  $('new-client-dialog').close();
+  // Cancelled: put the dropdown back to what it was.
+  if (newClientTarget && newClientTarget.value === NEW_CLIENT) {
+    newClientTarget.value = newClientTarget.dataset.previous || '';
+  }
+  newClientTarget = null;
+}
+
+async function submitNewClient(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = Object.fromEntries(new FormData(form));
+  const btn = $('nc-submit');
+  btn.disabled = true;
+  try {
+    const { id } = await api('/clients', 'POST', data);
+    const target = newClientTarget;
+    await refresh();
+    if (target) {
+      target.value = String(id);
+      target.dataset.previous = target.value;
+    }
+    newClientTarget = null;
+    $('new-client-dialog').close();
+    alert(`Client login created.\n\nSend ${data.name} their login:\nWebsite: ${location.origin}/login\nEmail: ${data.email.trim().toLowerCase()}\nPassword: ${data.password}\n\nThey can change the password after signing in.`);
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -561,6 +613,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('client-search').addEventListener('input', renderClients);
   $('email-test-btn').addEventListener('click', sendTestEmail);
   $('invoice-form').addEventListener('submit', submitInvoice);
+  for (const select of [$('o-client'), $('i-client')]) {
+    select.addEventListener('change', () => {
+      if (select.value === NEW_CLIENT) openNewClientDialog(select);
+      else select.dataset.previous = select.value;
+    });
+  }
+  $('new-client-form').addEventListener('submit', submitNewClient);
+  $('nc-cancel').addEventListener('click', closeNewClientDialog);
+  $('new-client-dialog').addEventListener('cancel', (e) => { e.preventDefault(); closeNewClientDialog(); });
+  $('nc-gen').addEventListener('click', () => { $('nc-password').value = generatePassword(); });
   $('add-item').addEventListener('click', () => addItemRow().querySelector('.item-desc').focus());
   $('invoice-search').addEventListener('input', renderInvoices);
   resetInvoiceForm();

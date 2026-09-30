@@ -233,5 +233,46 @@
       </div>
     </section>
   </main>
+
+  <dialog id="new-client-dialog" class="modal" aria-labelledby="nc-title">
+    <form id="new-client-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="nc-title">Add a new client</h2>
+        <p class="muted">Creates their login so they can see orders and pay invoices.</p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field">
+        <label for="nc-name">Full name</label>
+        <input id="nc-name" name="name" required>
+      </div>
+      <div class="field">
+        <label for="nc-email">Email (their username)</label>
+        <input id="nc-email" name="email" type="email" required>
+      </div>
+      <div class="field">
+        <label for="nc-password">Temporary password</label>
+        <div class="inline">
+          <input id="nc-password" name="password" required minlength="8" autocomplete="off">
+          <button type="button" class="btn btn-outline btn-sm" id="nc-gen">Generate</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="nc-phone">Phone <span class="optional">(optional)</span></label>
+        <input id="nc-phone" name="phone" type="tel">
+      </div>
+      <div class="field">
+        <label for="nc-residence">Residence</label>
+        <input id="nc-residence" name="residence" placeholder="Maple Hall">
+      </div>
+      <div class="field">
+        <label for="nc-room">Room</label>
+        <input id="nc-room" name="room" placeholder="214">
+      </div>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="nc-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="nc-submit">Create Client</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>
