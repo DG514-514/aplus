@@ -5,12 +5,9 @@ services:
     name: aplus-cleaning-solutions
     runtime: node
     plan: starter
-    region: ohio
-    branch: main
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /healthz
-    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: "22"
