@@ -55,28 +55,82 @@ function buildInquiryEmail(inquiry, siteUrl) {
   };
 }
 
-async function sendInquiryAlert(inquiry) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.NOTIFY_EMAIL;
-  if (!apiKey || !to) return { skipped: true };
+const DEFAULT_NOTIFY_EMAIL = 'info@aplus-cleaning-solutions.com';
 
-  const { subject, text, html } = buildInquiryEmail(inquiry, process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL);
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: process.env.MAIL_FROM || DEFAULT_FROM,
-      to: to.split(',').map((s) => s.trim()).filter(Boolean),
-      reply_to: inquiry.email,
-      subject,
-      text,
-      html,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Resend responded ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  }
-  return { sent: true };
+// Last outcome, shown in the owner dashboard so problems are visible without server logs.
+const lastResult = { at: null, ok: null, message: null };
+
+function config() {
+  return {
+    apiKey: (process.env.RESEND_API_KEY || '').trim(),
+    to: (process.env.NOTIFY_EMAIL || DEFAULT_NOTIFY_EMAIL).split(',').map((s) => s.trim()).filter(Boolean),
+    from: process.env.MAIL_FROM || DEFAULT_FROM,
+  };
 }
 
-module.exports = { sendInquiryAlert, buildInquiryEmail };
+// Turns Resend's error responses into something an owner can act on.
+function explain(status, body) {
+  const raw = String(body || '').slice(0, 300);
+  if (status === 401 || (status === 400 && /api key/i.test(raw))) {
+    return `The Resend API key was rejected. Create a new key in Resend and paste it into RESEND_API_KEY in Render. (${raw})`;
+  }
+  if (status === 403 && /own email|testing emails|verify a domain/i.test(raw)) {
+    return 'Resend will only deliver to the email address your Resend account was created with until you verify your domain. '
+      + `Either sign up to Resend with ${config().to.join(', ')}, or verify aplus-cleaning-solutions.com in Resend. (${raw})`;
+  }
+  if (status === 403 || status === 422) {
+    return `Resend refused the email — usually the sender (MAIL_FROM) uses a domain that isn't verified in Resend. (${raw})`;
+  }
+  return `Resend responded ${status}: ${raw}`;
+}
+
+async function sendEmail({ subject, text, html, replyTo }) {
+  const { apiKey, to, from } = config();
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is not set in Render → Environment, so no emails can be sent.');
+  }
+  let res;
+  try {
+    res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to, reply_to: replyTo, subject, text, html }),
+    });
+  } catch (err) {
+    throw new Error(`Couldn't reach Resend: ${err.message}`);
+  }
+  if (!res.ok) throw new Error(explain(res.status, await res.text()));
+  return { sent: true, to };
+}
+
+async function track(promise) {
+  try {
+    const result = await promise;
+    Object.assign(lastResult, { at: new Date().toISOString(), ok: true, message: `Sent to ${result.to.join(', ')}` });
+    return result;
+  } catch (err) {
+    Object.assign(lastResult, { at: new Date().toISOString(), ok: false, message: err.message });
+    throw err;
+  }
+}
+
+function sendInquiryAlert(inquiry) {
+  const email = buildInquiryEmail(inquiry, process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL);
+  return track(sendEmail({ ...email, replyTo: inquiry.email }));
+}
+
+function sendTestEmail() {
+  return track(sendEmail({
+    subject: 'Test: A+ Cleaning website email alerts are working',
+    text: 'This is a test from your A+ Cleaning Solutions owner dashboard. Quote request alerts will arrive at this address.',
+    html: '<p style="font-family:Arial,sans-serif">This is a test from your A+ Cleaning Solutions owner dashboard. '
+      + 'Quote request alerts will arrive at this address. ✅</p>',
+  }));
+}
+
+function emailStatus() {
+  const { apiKey, to, from } = config();
+  return { keySet: Boolean(apiKey), to, from, last: { ...lastResult } };
+}
+
+module.exports = { sendInquiryAlert, sendTestEmail, emailStatus, buildInquiryEmail };

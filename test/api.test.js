@@ -194,3 +194,36 @@ test('quote requests trigger an email alert when email is configured', async () 
     delete process.env.NOTIFY_EMAIL;
   }
 });
+
+test('owner can check email setup and gets a plain-English reason when Resend refuses', async () => {
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+  const loginRes = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const cookie = loginRes.headers.get('set-cookie').split(';')[0];
+
+  const noKey = await post('/api/admin/email-test', {}, { cookie });
+  assert.equal(noKey.status, 502);
+  assert.match((await noKey.json()).error, /RESEND_API_KEY is not set/);
+
+  const status = await (await fetch(`${base}/api/admin/email-status`, { headers: { cookie } })).json();
+  assert.equal(status.keySet, false);
+  assert.deepEqual(status.to, ['info@aplus-cleaning-solutions.com']);
+  assert.equal(status.last.ok, false);
+
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts) => (String(url).startsWith('https://api.resend.com')
+    ? new Response('{"statusCode":403,"message":"You can only send testing emails to your own email address (owner@gmail.com)."}', { status: 403 })
+    : realFetch(url, opts));
+  process.env.RESEND_API_KEY = 're_test';
+  try {
+    const refused = await post('/api/admin/email-test', {}, { cookie });
+    assert.equal(refused.status, 502);
+    assert.match((await refused.json()).error, /only deliver to the email address your Resend account was created with/);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+
+  // Not available without an admin session.
+  assert.equal((await post('/api/admin/email-test', {})).status, 401);
+});

@@ -168,6 +168,14 @@
 
     <!-- Inquiries -->
     <section class="view" id="view-inquiries" hidden>
+      <div class="panel email-panel">
+        <div class="panel-head">
+          <h2>Email alerts</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="email-test-btn">Send Test Email</button>
+        </div>
+        <p class="email-status" id="email-status">Checking…</p>
+        <div class="alert" id="email-result" role="status" aria-live="polite" hidden></div>
+      </div>
       <div class="panel">
         <div class="panel-head"><h2>Quote requests from the website</h2></div>
         <div id="inquiries-list" class="inquiries"></div>

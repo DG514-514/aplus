@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
+const notify = require('./notify');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -219,6 +220,21 @@ router.delete('/orders/:id', (req, res) => {
   const result = db.prepare('DELETE FROM orders WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Order not found.' });
   res.json({ ok: true });
+});
+
+/* ---------- Email alerts ---------- */
+
+router.get('/email-status', (_req, res) => {
+  res.json(notify.emailStatus());
+});
+
+router.post('/email-test', async (_req, res) => {
+  try {
+    const { to } = await notify.sendTestEmail();
+    res.json({ ok: true, message: `Test email sent to ${to.join(', ')}. Check the inbox (and spam/junk) in a minute.` });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 /* ---------- Website quote requests ---------- */

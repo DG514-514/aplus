@@ -47,3 +47,6 @@
   .admin-table td:last-child { grid-template-columns: 1fr; }
   .admin-table td:last-child::before { content: none; }
 }
+
+.email-status { white-space: pre-line; margin: 0 0 12px; color: var(--ink); }
+.email-panel .alert { margin: 0; word-break: break-word; }
