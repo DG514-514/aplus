@@ -321,6 +321,48 @@ async function archiveInquiry(inq) {
   } catch (err) { toast(err.message); }
 }
 
+/* ---------- Email alerts ---------- */
+
+async function loadEmailStatus() {
+  const box = $('email-status');
+  try {
+    const st = await api('/email-status');
+    const lines = [];
+    if (!st.keySet) {
+      lines.push('⚠️ Not set up: RESEND_API_KEY is missing in Render → Environment.');
+    } else {
+      lines.push(`Alerts go to ${st.to.join(', ')} (sent from ${st.from}).`);
+    }
+    if (st.last.at) {
+      const when = new Date(st.last.at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' });
+      lines.push(`${st.last.ok ? '✅ Last email sent' : '❌ Last email failed'} ${when}: ${st.last.message}`);
+    }
+    box.textContent = lines.join('\n');
+  } catch (err) {
+    box.textContent = `Couldn’t check email settings: ${err.message}`;
+  }
+}
+
+async function sendTestEmail() {
+  const btn = $('email-test-btn');
+  const result = $('email-result');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const { message } = await api('/email-test', 'POST');
+    result.className = 'alert alert-success';
+    result.textContent = message;
+  } catch (err) {
+    result.className = 'alert alert-error';
+    result.textContent = err.message;
+  } finally {
+    result.hidden = false;
+    btn.disabled = false;
+    btn.textContent = 'Send Test Email';
+    loadEmailStatus();
+  }
+}
+
 /* ---------- Init ---------- */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -331,11 +373,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('client-cancel').addEventListener('click', resetClientForm);
   $('order-search').addEventListener('input', renderOrders);
   $('client-search').addEventListener('input', renderClients);
+  $('email-test-btn').addEventListener('click', sendTestEmail);
   $('gen-password').addEventListener('click', () => { $('c-password').value = generatePassword(); });
   $('logout-btn').addEventListener('click', async () => {
     try { await api('/logout', 'POST'); } finally { window.location.assign('/admin'); }
   });
 
+  loadEmailStatus();
   try {
     await refresh();
   } catch (err) {
