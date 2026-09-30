@@ -27,6 +27,19 @@ Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your hosting settings, then sign in at
 - add, edit and delete orders and change their status (scheduled / completed / cancelled),
 - see quote requests from the website's "Book Today" form and turn them into clients in one click.
 
+## Invoices & online payments (Stripe)
+
+From the dashboard's **Invoices** tab (or **Approve & Invoice** on a quote request) you can send a client an
+invoice with line items. It appears in their portal with a **Pay** button that opens Stripe Checkout; when they
+pay, the invoice is marked paid, the owner gets an email, and the client gets a Stripe receipt. Invoices can also
+be marked paid by hand (e-transfer, cash) or voided.
+
+| Variable                | Purpose                                                                            |
+|-------------------------|------------------------------------------------------------------------------------|
+| `STRIPE_SECRET_KEY`     | `sk_test_…` for testing (card 4242 4242 4242 4242) or `sk_live_…` for real payments |
+| `STRIPE_WEBHOOK_SECRET` | Optional but recommended: endpoint `https://<domain>/api/stripe/webhook`, event `checkout.session.completed` |
+| `STRIPE_CURRENCY`       | Optional, defaults to `cad`                                                         |
+
 ## Deploying (Render)
 
 `render.yaml` sets everything up: a Node web service on the Starter plan with a 1 GB persistent disk for the

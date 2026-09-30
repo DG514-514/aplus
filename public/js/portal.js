@@ -180,10 +180,113 @@ function setupPasswordForm() {
   });
 }
 
+/* ---------- Invoices ---------- */
+
+function invoiceBadge(inv) {
+  if (inv.status === 'paid') return ['paid', 'Paid'];
+  if (inv.due_date && inv.due_date < todayIso()) return ['overdue', 'Overdue'];
+  return ['open', 'Due'];
+}
+
+async function payInvoice(inv, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Opening secure checkout…';
+  try {
+    const { url } = await api(`/api/invoices/${encodeURIComponent(inv.invoice_number)}/pay`, { method: 'POST', body: '{}' });
+    window.location.assign(url);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = `Pay ${money.format(inv.amount_cents / 100)}`;
+    showPayNotice('error', err.message);
+  }
+}
+
+function showPayNotice(type, message) {
+  const box = document.getElementById('pay-notice');
+  box.className = `alert alert-${type}`;
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function renderInvoices(invoices, paymentsEnabled) {
+  const panel = document.getElementById('invoices-panel');
+  const list = document.getElementById('invoice-list');
+  const banner = document.getElementById('balance-banner');
+  list.replaceChildren();
+  panel.hidden = invoices.length === 0;
+
+  const open = invoices.filter((i) => i.status === 'open');
+  banner.hidden = open.length === 0;
+  if (open.length) {
+    const due = open.reduce((sum, i) => sum + i.amount_cents, 0);
+    document.getElementById('balance-title').textContent =
+      `You have ${open.length} unpaid invoice${open.length === 1 ? '' : 's'} · ${money.format(due / 100)} due`;
+    document.getElementById('balance-sub').textContent = paymentsEnabled
+      ? 'Pay securely online by card in under a minute.'
+      : 'Please contact us to arrange payment.';
+  }
+
+  for (const inv of invoices) {
+    const [cls, label] = invoiceBadge(inv);
+    const lines = el('table', { class: 'invoice-lines' }, el('tbody', {},
+      ...inv.items.map((it) => el('tr', {}, el('td', {}, it.description), el('td', {}, money.format(it.amount_cents / 100)))),
+      el('tr', { class: 'total' }, el('td', {}, 'Total'), el('td', {}, money.format(inv.amount_cents / 100)))));
+
+    const meta = [`Issued ${fmtDate(inv.created_at.slice(0, 10))}`];
+    if (inv.status === 'open' && inv.due_date) meta.push(`Due ${fmtDate(inv.due_date)}`);
+    if (inv.status === 'paid' && inv.paid_at) meta.push(`Paid ${fmtDate(inv.paid_at.slice(0, 10))}`);
+
+    const actions = el('div', { class: 'invoice-actions' });
+    if (inv.status === 'open' && paymentsEnabled) {
+      const btn = el('button', { type: 'button', class: 'btn btn-primary' }, `Pay ${money.format(inv.amount_cents / 100)}`);
+      btn.addEventListener('click', () => payInvoice(inv, btn));
+      actions.append(btn, el('span', { class: 'secure' }, '🔒 Secure checkout by Stripe'));
+    } else if (inv.status === 'open') {
+      actions.append(el('span', { class: 'secure' }, 'Online payment coming soon — contact us at info@aplus-cleaning-solutions.com to pay.'));
+    }
+    if (inv.receipt_url) {
+      actions.append(el('a', { class: 'btn btn-outline btn-sm', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'View Receipt'));
+    }
+
+    list.append(el('article', { class: `invoice-card${inv.status === 'open' ? ' is-open' : ''}` },
+      el('div', { class: 'invoice-top' },
+        el('div', {}, el('h3', {}, `Invoice ${inv.invoice_number}`), el('span', { class: 'sub' }, meta.join(' · '))),
+        el('span', { class: `badge badge-${cls}` }, label)),
+      lines,
+      inv.notes ? el('p', { class: 'invoice-note' }, inv.notes) : null,
+      actions.children.length ? actions : null));
+  }
+}
+
+async function loadInvoices() {
+  const { invoices, payments } = await api('/api/invoices');
+  renderInvoices(invoices, payments);
+}
+
+// Back from Stripe: confirm the payment so the invoice shows as paid right away.
+async function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get('paid');
+  if (!sessionId) return;
+  history.replaceState(null, '', '/portal');
+  try {
+    const result = await api('/api/invoices/confirm', { method: 'POST', body: JSON.stringify({ sessionId }) });
+    if (result.paid) showPayNotice('success', `Thank you! Invoice ${result.invoiceNumber} is paid. A receipt has been emailed to you.`);
+    else showPayNotice('success', 'Thanks! Your payment is processing and will show here shortly.');
+  } catch (err) {
+    showPayNotice('success', 'Thanks! Your payment is processing and will show here shortly.');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   setupTabs();
   setupLogout();
   setupPasswordForm();
+
+  await handlePaymentReturn();
+  loadInvoices().catch((err) => {
+    if (err.message !== 'Signed out') showPayNotice('error', `We couldn’t load your invoices. ${err.message}`);
+  });
 
   try {
     const [{ client }, { orders }] = await Promise.all([api('/api/me'), api('/api/orders')]);

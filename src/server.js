@@ -6,6 +6,8 @@ const db = require('./db');
 const auth = require('./auth');
 const admin = require('./admin');
 const { sendInquiryAlert } = require('./notify');
+const invoices = require('./invoices');
+const stripe = require('./stripe');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -31,6 +33,20 @@ app.use((_req, res, next) => {
     'X-Frame-Options': 'DENY',
   });
   next();
+});
+
+// Stripe webhook needs the raw body to verify its signature, so it's registered before JSON parsing.
+app.post('/api/stripe/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+  let event;
+  try {
+    event = stripe.verifyWebhook(req.body.toString('utf8'), req.get('stripe-signature'));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+    invoices.applyCheckoutSession(event.data.object);
+  }
+  res.json({ received: true });
 });
 
 app.use(express.json({ limit: '20kb' }));
@@ -110,6 +126,63 @@ app.get('/api/orders', auth.requireClientApi, (req, res) => {
     ORDER BY service_date DESC, id DESC
   `).all(req.client.id);
   res.json({ orders });
+});
+
+/* ---------- Invoices ---------- */
+
+app.get('/api/invoices', auth.requireClientApi, (req, res) => {
+  res.json({ invoices: invoices.listForClient(req.client.id), payments: stripe.status().configured });
+});
+
+app.post('/api/invoices/:number/pay', auth.requireClientApi, async (req, res) => {
+  const invoice = invoices.findByNumber(req.params.number);
+  if (!invoice || invoice.client_id !== req.client.id || invoice.status === 'void') {
+    return res.status(404).json({ error: 'Invoice not found.' });
+  }
+  if (invoice.status === 'paid') return res.status(409).json({ error: 'This invoice is already paid.' });
+
+  try {
+    // Reuse an unexpired checkout for this invoice so double-clicks can't create two payments.
+    if (invoice.stripe_session_id) {
+      const existing = await stripe.retrieveCheckoutSession(invoice.stripe_session_id).catch(() => null);
+      if (existing?.status === 'open' && Number(existing.amount_total) === invoice.amount_cents) {
+        return res.json({ url: existing.url });
+      }
+      if (existing?.payment_status === 'paid') {
+        invoices.applyCheckoutSession(existing);
+        return res.status(409).json({ error: 'This invoice is already paid.' });
+      }
+    }
+    const base = `${req.protocol}://${req.get('host')}`;
+    const session = await stripe.createCheckoutSession({
+      invoice,
+      items: invoices.itemsFor(invoice.id),
+      client: req.client,
+      successUrl: `${base}/portal?paid={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}/portal`,
+    });
+    db.prepare('UPDATE invoices SET stripe_session_id = ? WHERE id = ?').run(session.id, invoice.id);
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Stripe checkout failed:', err.message);
+    res.status(502).json({ error: 'Online payment isn’t available right now. Please try again shortly or contact us.' });
+  }
+});
+
+// Called when the client returns from Stripe, so the invoice shows as paid immediately.
+app.post('/api/invoices/confirm', auth.requireClientApi, async (req, res) => {
+  const sessionId = str(req.body?.sessionId, 200);
+  if (!sessionId) return res.status(400).json({ error: 'Missing payment reference.' });
+  try {
+    const session = await stripe.retrieveCheckoutSession(sessionId);
+    const invoice = invoices.findByNumber(session.metadata?.invoice_number || session.client_reference_id);
+    if (!invoice || invoice.client_id !== req.client.id) return res.status(404).json({ error: 'Invoice not found.' });
+    const { invoice: updated, paid } = invoices.applyCheckoutSession(session);
+    res.json({ paid, invoiceNumber: updated.invoice_number, status: updated.status });
+  } catch (err) {
+    console.error('Stripe confirm failed:', err.message);
+    res.status(502).json({ error: 'We couldn’t confirm the payment yet. It will update shortly.' });
+  }
 });
 
 /* ---------- Public inquiries (booking / quote form) ---------- */

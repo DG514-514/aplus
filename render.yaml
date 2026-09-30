@@ -30,6 +30,10 @@ services:
         value: info@aplus-cleaning-solutions.com
       - key: RESEND_API_KEY
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
     disk:
       name: aplus-data
       mountPath: /var/data

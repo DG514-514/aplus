@@ -8,6 +8,8 @@ const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
 const notify = require('./notify');
+const invoices = require('./invoices');
+const stripe = require('./stripe');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -98,7 +100,7 @@ router.get('/overview', (_req, res) => {
     ORDER BY o.service_date DESC, o.id DESC
   `).all();
   const inquiries = db.prepare('SELECT * FROM inquiries ORDER BY id DESC').all();
-  res.json({ clients, orders, inquiries });
+  res.json({ clients, orders, inquiries, invoices: invoices.listAll(), payments: stripe.status() });
 });
 
 /* ---------- Clients ---------- */
@@ -153,6 +155,10 @@ router.patch('/clients/:id', (req, res) => {
 });
 
 router.delete('/clients/:id', (req, res) => {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM invoices WHERE client_id = ?').get(Number(req.params.id));
+  if (count) {
+    return res.status(409).json({ error: 'This client has invoices, which are kept as financial records. Void any open invoices instead of deleting the client.' });
+  }
   const result = db.prepare('DELETE FROM clients WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Client not found.' });
   res.json({ ok: true });
@@ -219,6 +225,56 @@ router.patch('/orders/:id', (req, res) => {
 router.delete('/orders/:id', (req, res) => {
   const result = db.prepare('DELETE FROM orders WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Order not found.' });
+  res.json({ ok: true });
+});
+
+/* ---------- Invoices ---------- */
+
+router.post('/invoices', async (req, res) => {
+  const b = req.body || {};
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(b.clientId));
+  if (!client) return res.status(400).json({ error: 'Choose a client.' });
+
+  const items = (Array.isArray(b.items) ? b.items : [])
+    .map((item) => ({ description: str(item?.description, 200), amount_cents: parseAmount(item?.amount) }))
+    .filter((item) => item.description || item.amount_cents);
+  if (!items.length) return res.status(400).json({ error: 'Add at least one line item.' });
+  if (items.some((item) => !item.description)) return res.status(400).json({ error: 'Every line item needs a description.' });
+  if (items.some((item) => !item.amount_cents)) return res.status(400).json({ error: 'Every line item needs an amount above $0.' });
+  if (items.length > 20) return res.status(400).json({ error: 'Up to 20 line items per invoice.' });
+  if (items.reduce((sum, item) => sum + item.amount_cents, 0) < 50) {
+    return res.status(400).json({ error: 'The invoice total must be at least $0.50 (Stripe’s minimum).' });
+  }
+
+  const dueDate = str(b.dueDate, 10);
+  if (dueDate && !DATE_RE.test(dueDate)) return res.status(400).json({ error: 'Pick a valid due date.' });
+  const inquiryId = Number(b.inquiryId) || null;
+
+  const invoice = invoices.create({ clientId: client.id, items, dueDate, notes: str(b.notes, 1000), inquiryId });
+
+  let email = 'skipped';
+  if (b.sendEmail !== false) {
+    try {
+      await notify.sendInvoiceEmail({ client, invoice, items: invoice.items });
+      email = 'sent';
+    } catch (err) {
+      email = err.message;
+    }
+  }
+  res.status(201).json({ invoiceNumber: invoice.invoice_number, email });
+});
+
+router.post('/invoices/:id/mark-paid', (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(req.params.id));
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+  if (invoice.status !== 'open') return res.status(409).json({ error: `Invoice is already ${invoice.status}.` });
+  invoices.markPaid(invoice, { method: str(req.body?.method, 40) || 'manual' });
+  res.json({ ok: true });
+});
+
+router.post('/invoices/:id/void', (req, res) => {
+  const result = db.prepare("UPDATE invoices SET status = 'void' WHERE id = ? AND status = 'open'").run(Number(req.params.id));
+  if (!result.changes) return res.status(409).json({ error: 'Only unpaid invoices can be voided.' });
   res.json({ ok: true });
 });
 

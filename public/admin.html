@@ -32,6 +32,7 @@
     <div class="tabs admin-tabs" role="tablist" aria-label="Sections">
       <button role="tab" type="button" class="tab" aria-selected="true" data-view="orders">Orders <span class="count" id="count-orders"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="clients">Clients <span class="count" id="count-clients"></span></button>
+      <button role="tab" type="button" class="tab" aria-selected="false" data-view="invoices">Invoices <span class="count" id="count-invoices"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="inquiries">Quote Requests <span class="count" id="count-inquiries"></span></button>
     </div>
 
@@ -163,6 +164,55 @@
           </table>
         </div>
         <p class="empty" id="clients-empty" hidden>No clients yet — add your first one above.</p>
+      </div>
+    </section>
+
+    <!-- Invoices -->
+    <section class="view" id="view-invoices" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Send an invoice</h2>
+        </div>
+        <p class="payments-status" id="payments-status"></p>
+        <form id="invoice-form" class="form-grid admin-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="i-client">Client</label>
+            <select id="i-client" name="clientId" required></select>
+          </div>
+          <div class="field">
+            <label for="i-due">Due date <span class="optional">(optional)</span></label>
+            <input id="i-due" name="dueDate" type="date">
+          </div>
+          <div class="field full">
+            <label>Line items</label>
+            <div id="invoice-items" class="invoice-items"></div>
+            <div class="items-foot">
+              <button type="button" class="link-btn" id="add-item">+ Add line item</button>
+              <span class="invoice-total">Total: <strong id="invoice-total">$0.00</strong></span>
+            </div>
+          </div>
+          <div class="field full">
+            <label for="i-notes">Note to the client <span class="optional">(optional — shown on the invoice)</span></label>
+            <textarea id="i-notes" name="notes" rows="2" placeholder="e.g. Covers 4 bi-weekly cleans in October. Thank you!"></textarea>
+          </div>
+          <label class="check full"><input type="checkbox" id="i-email" checked> Email the client that they have a new invoice</label>
+          <div class="full"><button class="btn btn-primary" type="submit" id="invoice-submit">Send Invoice</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>All invoices</h2>
+          <input type="search" id="invoice-search" class="search" placeholder="Search client, invoice #…" aria-label="Search invoices">
+        </div>
+        <div class="table-wrap">
+          <table class="orders admin-table">
+            <thead><tr><th>Invoice</th><th>Client</th><th>Sent</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr></thead>
+            <tbody id="invoices-body"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="invoices-empty" hidden>No invoices yet. Approve a quote request or pick a client above to send one.</p>
       </div>
     </section>
 

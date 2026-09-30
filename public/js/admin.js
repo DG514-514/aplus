@@ -3,7 +3,10 @@
 const money = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
 const STATUS_LABELS = { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' };
 
-const state = { clients: [], orders: [], inquiries: [], editingOrder: null, editingClient: null };
+const state = {
+  clients: [], orders: [], inquiries: [], invoices: [], payments: {},
+  editingOrder: null, editingClient: null, invoiceInquiry: null, pendingInquiry: null,
+};
 
 const $ = (id) => document.getElementById(id);
 const fmtDate = (iso) => {
@@ -56,11 +59,14 @@ async function refresh() {
   Object.assign(state, await api('/overview'));
   $('count-orders').textContent = state.orders.length || '';
   $('count-clients').textContent = state.clients.length || '';
-  $('count-inquiries').textContent = state.inquiries.length || '';
+  $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number).length || '';
+  $('count-invoices').textContent = state.invoices.filter((i) => i.status === 'open').length || '';
   renderClientOptions();
   renderOrders();
   renderClients();
   renderInquiries();
+  renderInvoices();
+  renderPaymentsStatus();
 }
 
 /* ---------- Tabs ---------- */
@@ -73,13 +79,14 @@ function showView(view) {
 /* ---------- Orders ---------- */
 
 function renderClientOptions() {
-  const select = $('o-client');
-  const current = select.value;
-  select.replaceChildren(el('option', { value: '' }, state.clients.length ? 'Choose a client…' : 'Add a client first'));
-  for (const c of state.clients) {
-    select.append(el('option', { value: String(c.id) }, `${c.name} — ${c.email}`));
+  for (const select of [$('o-client'), $('i-client')]) {
+    const current = select.value;
+    select.replaceChildren(el('option', { value: '' }, state.clients.length ? 'Choose a client…' : 'Add a client first'));
+    for (const c of state.clients) {
+      select.append(el('option', { value: String(c.id) }, `${c.name} — ${c.email}`));
+    }
+    select.value = current;
   }
-  select.value = current;
 }
 
 function renderOrders() {
@@ -196,6 +203,7 @@ function renderClients() {
       el('td', { 'data-label': 'Orders', class: 'num' }, String(c.order_count)),
       el('td', {}, el('div', { class: 'row-actions' },
         el('button', { type: 'button', class: 'link-btn', onclick: () => newOrderFor(c) }, 'Add Order'),
+        el('button', { type: 'button', class: 'link-btn', onclick: () => openInvoiceFor(c) }, 'Invoice'),
         el('button', { type: 'button', class: 'link-btn', onclick: () => editClient(c) }, 'Edit'),
         el('button', { type: 'button', class: 'link-btn', onclick: () => resetPassword(c) }, 'Reset Password'),
         el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteClient(c) }, 'Delete')))));
@@ -212,6 +220,7 @@ function resetClientForm() {
   const form = $('client-form');
   form.reset();
   state.editingClient = null;
+  state.pendingInquiry = null;
   $('client-form-title').textContent = 'Add a client login';
   $('client-submit').textContent = 'Create Client Login';
   $('client-cancel').hidden = true;
@@ -272,8 +281,13 @@ async function submitClient(e) {
       await api('/clients', 'POST', data);
       alert(`Client login created.\n\nSend ${data.name} their login:\nWebsite: ${location.origin}/login\nEmail: ${data.email.trim().toLowerCase()}\nPassword: ${data.password}\n\nThey can change the password after signing in.`);
     }
+    const pending = state.pendingInquiry;
     resetClientForm();
     await refresh();
+    if (pending) {
+      const client = state.clients.find((c) => c.email.toLowerCase() === data.email.trim().toLowerCase());
+      if (client) openInvoiceFor(client, pending);
+    }
   } catch (err) { formError(form, err.message); }
 }
 
@@ -296,7 +310,10 @@ function renderInquiries() {
       el('p', { class: 'sub' }, [inq.plan, inq.residence].filter(Boolean).join(' · ') || ''),
       inq.message ? el('p', { class: 'inquiry-msg' }, inq.message) : null,
       el('div', { class: 'row-actions' },
-        el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
+        inq.invoice_number
+          ? el('span', { class: 'chip' }, `✓ Invoiced ${inq.invoice_number}`)
+          : el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveInquiry(inq) }, 'Approve & Invoice'),
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
         el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => archiveInquiry(inq) }, 'Archive'))));
   }
 }
@@ -313,10 +330,179 @@ function clientFromInquiry(inq) {
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// Approving a quote: make sure the client has a login, then open a pre-filled invoice.
+function approveInquiry(inq) {
+  const existing = state.clients.find((c) => c.email.toLowerCase() === inq.email.toLowerCase());
+  if (existing) {
+    openInvoiceFor(existing, inq);
+    return;
+  }
+  clientFromInquiry(inq);
+  state.pendingInquiry = inq;
+  toast('First create their client login — the invoice form opens next.');
+}
+
 async function archiveInquiry(inq) {
   if (!confirm(`Archive the request from ${inq.name}? It will be removed from this list.`)) return;
   try {
     await api(`/inquiries/${inq.id}`, 'DELETE');
+    await refresh();
+  } catch (err) { toast(err.message); }
+}
+
+/* ---------- Invoices ---------- */
+
+const todayIso = () => new Date().toLocaleDateString('en-CA');
+const addDaysIso = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('en-CA');
+};
+
+function renderPaymentsStatus() {
+  const box = $('payments-status');
+  const p = state.payments || {};
+  box.classList.toggle('warn', !p.configured);
+  if (!p.configured) {
+    box.textContent = '⚠️ Online card payments aren’t connected yet (add STRIPE_SECRET_KEY in Render → Environment). You can still send invoices and mark them paid by hand.';
+  } else {
+    box.textContent = p.mode === 'live'
+      ? '✅ Stripe connected — clients can pay invoices by card.'
+      : '🧪 Stripe connected in TEST mode — use card 4242 4242 4242 4242 to try it. No real money moves.';
+  }
+}
+
+function addItemRow(description = '', amount = '') {
+  const row = el('div', { class: 'item-row' },
+    el('input', { class: 'item-desc', placeholder: 'Description, e.g. Bi-Weekly dorm cleaning (October)', 'aria-label': 'Description', value: description, oninput: updateInvoiceTotal }),
+    el('input', { class: 'item-amount', type: 'number', min: '0', step: '0.01', placeholder: 'Amount $', 'aria-label': 'Amount', value: amount, oninput: updateInvoiceTotal }),
+    el('button', {
+      type: 'button', class: 'link-btn danger', 'aria-label': 'Remove line item',
+      onclick: () => { if ($('invoice-items').children.length > 1) row.remove(); updateInvoiceTotal(); },
+    }, '✕'));
+  $('invoice-items').append(row);
+  updateInvoiceTotal();
+  return row;
+}
+
+function readItems() {
+  return [...$('invoice-items').querySelectorAll('.item-row')].map((row) => ({
+    description: row.querySelector('.item-desc').value.trim(),
+    amount: row.querySelector('.item-amount').value,
+  })).filter((item) => item.description || item.amount);
+}
+
+function updateInvoiceTotal() {
+  const total = readItems().reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  $('invoice-total').textContent = money.format(total);
+}
+
+function resetInvoiceForm() {
+  const form = $('invoice-form');
+  form.reset();
+  $('i-email').checked = true;
+  $('i-due').value = addDaysIso(7);
+  $('invoice-items').replaceChildren();
+  addItemRow();
+  state.invoiceInquiry = null;
+  formError(form, '');
+}
+
+function openInvoiceFor(client, inquiry = null) {
+  resetInvoiceForm();
+  showView('invoices');
+  $('i-client').value = String(client.id);
+  state.invoiceInquiry = inquiry;
+  if (inquiry) {
+    const desc = [inquiry.plan && `${inquiry.plan} cleaning`, inquiry.residence].filter(Boolean).join(' — ');
+    $('invoice-items').querySelector('.item-desc').value = desc || 'Cleaning service';
+  }
+  $('invoice-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('invoice-items').querySelector('.item-amount').focus({ preventScroll: true });
+}
+
+async function submitInvoice(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn = $('invoice-submit');
+  formError(form, '');
+  btn.disabled = true;
+  try {
+    const { invoiceNumber, email } = await api('/invoices', 'POST', {
+      clientId: $('i-client').value,
+      dueDate: $('i-due').value,
+      notes: $('i-notes').value,
+      items: readItems(),
+      inquiryId: state.invoiceInquiry?.id,
+      sendEmail: $('i-email').checked,
+    });
+    resetInvoiceForm();
+    await refresh();
+    if (email === 'sent' || email === 'skipped') {
+      toast(`Invoice ${invoiceNumber} ${email === 'sent' ? 'sent — the client has been emailed' : 'created'}. It’s in their portal now.`);
+    } else {
+      alert(`Invoice ${invoiceNumber} was created and is in the client’s portal, but the email to them didn’t send:\n\n${email}\n\nYou can let them know to sign in and pay.`);
+    }
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function invoiceStatus(inv) {
+  if (inv.status === 'paid') return ['paid', `Paid${inv.paid_method && inv.paid_method !== 'stripe' ? ` (${inv.paid_method})` : ''}`];
+  if (inv.status === 'void') return ['void', 'Void'];
+  if (inv.due_date && inv.due_date < todayIso()) return ['overdue', 'Overdue'];
+  return ['open', 'Unpaid'];
+}
+
+function renderInvoices() {
+  const q = $('invoice-search').value.trim().toLowerCase();
+  const rows = state.invoices.filter((i) => !q
+    || [i.invoice_number, i.client_name, i.client_email, ...i.items.map((it) => it.description)].join(' ').toLowerCase().includes(q));
+  const tbody = $('invoices-body');
+  tbody.replaceChildren();
+  $('invoices-empty').hidden = rows.length > 0;
+
+  for (const inv of rows) {
+    const [cls, label] = invoiceStatus(inv);
+    const actions = el('div', { class: 'row-actions' });
+    if (inv.status === 'open') {
+      actions.append(
+        el('button', { type: 'button', class: 'link-btn', onclick: () => markInvoicePaid(inv) }, 'Mark Paid'),
+        el('button', { type: 'button', class: 'link-btn danger', onclick: () => voidInvoice(inv) }, 'Void'));
+    }
+    if (inv.receipt_url) actions.append(el('a', { class: 'link-btn', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'Receipt'));
+
+    tbody.append(el('tr', {},
+      el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
+      el('td', { 'data-label': 'Client' }, el('div', {},
+        el('strong', {}, inv.client_name),
+        el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')))),
+      el('td', { 'data-label': 'Sent' }, fmtDate(inv.created_at.slice(0, 10))),
+      el('td', { 'data-label': 'Due' }, inv.due_date ? fmtDate(inv.due_date) : '—'),
+      el('td', { 'data-label': 'Status' }, el('span', { class: `badge badge-${cls}` }, label)),
+      el('td', { 'data-label': 'Total', class: 'num' }, money.format(inv.amount_cents / 100)),
+      el('td', {}, actions)));
+  }
+}
+
+async function markInvoicePaid(inv) {
+  const method = prompt(`Mark ${inv.invoice_number} (${money.format(inv.amount_cents / 100)}) as paid.\n\nHow was it paid? (e.g. e-transfer, cash, cheque)`, 'e-transfer');
+  if (method === null) return;
+  try {
+    await api(`/invoices/${inv.id}/mark-paid`, 'POST', { method: method.trim() || 'manual' });
+    toast(`${inv.invoice_number} marked paid.`);
+    await refresh();
+  } catch (err) { toast(err.message); }
+}
+
+async function voidInvoice(inv) {
+  if (!confirm(`Void ${inv.invoice_number} for ${inv.client_name}? It will disappear from their portal and can’t be paid.`)) return;
+  try {
+    await api(`/invoices/${inv.id}/void`, 'POST');
+    toast(`${inv.invoice_number} voided.`);
     await refresh();
   } catch (err) { toast(err.message); }
 }
@@ -374,6 +560,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('order-search').addEventListener('input', renderOrders);
   $('client-search').addEventListener('input', renderClients);
   $('email-test-btn').addEventListener('click', sendTestEmail);
+  $('invoice-form').addEventListener('submit', submitInvoice);
+  $('add-item').addEventListener('click', () => addItemRow().querySelector('.item-desc').focus());
+  $('invoice-search').addEventListener('input', renderInvoices);
+  resetInvoiceForm();
   $('gen-password').addEventListener('click', () => { $('c-password').value = generatePassword(); });
   $('logout-btn').addEventListener('click', async () => {
     try { await api('/logout', 'POST'); } finally { window.location.assign('/admin'); }
