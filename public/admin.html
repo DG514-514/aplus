@@ -242,6 +242,31 @@
     </section>
   </main>
 
+  <dialog id="decline-dialog" class="modal" aria-labelledby="dc-title">
+    <form id="decline-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="dc-title">Decline quote request</h2>
+        <p class="muted" id="dc-who"></p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field full">
+        <label for="dc-reason">Reason <span class="optional">(included in the email to the customer)</span></label>
+        <textarea id="dc-reason" name="reason" rows="5" maxlength="1500"
+          placeholder="e.g. We’re fully booked for the dates you requested, but we’d love to help later in the semester."></textarea>
+      </div>
+      <div class="full email-preview">
+        <strong>The customer will receive:</strong>
+        <p>“Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.”</p>
+        <p class="muted">…followed by your reason, and an invitation to reply with any questions.</p>
+      </div>
+      <label class="check full"><input type="checkbox" id="dc-email" checked> Email the reason to the customer</label>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="dc-cancel">Cancel</button>
+        <button type="submit" class="btn btn-danger" id="dc-submit">Decline &amp; Send</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="new-client-dialog" class="modal" aria-labelledby="nc-title">
     <form id="new-client-form" class="form-grid admin-form" novalidate>
       <div class="full modal-head">

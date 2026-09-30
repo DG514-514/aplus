@@ -377,3 +377,45 @@ test('invoices: owner sends, client pays through Stripe, others cannot see or pa
     delete process.env.STRIPE_WEBHOOK_SECRET;
   }
 });
+
+test('owner can decline a quote request and the customer is emailed the reason', async () => {
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const cookie = adminLogin.headers.get('set-cookie').split(';')[0];
+
+  await post('/api/inquiries', { name: 'Pat Doe', email: 'pat@example.com', plan: 'Weekly' });
+  const { id } = db.prepare("SELECT id FROM inquiries WHERE email = 'pat@example.com'").get();
+
+  // A reason is required when emailing.
+  assert.equal((await post(`/api/admin/inquiries/${id}/decline`, { reason: '' }, { cookie })).status, 400);
+
+  const realFetch = global.fetch;
+  const sent = [];
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) {
+      sent.push(JSON.parse(opts.body));
+      return new Response('{"id":"x"}', { status: 200 });
+    }
+    return realFetch(url, opts);
+  };
+  process.env.RESEND_API_KEY = 're_test';
+  try {
+    const res = await post(`/api/admin/inquiries/${id}/decline`, { reason: 'Fully booked <that week>.' }, { cookie });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).email, 'sent');
+    assert.deepEqual(sent[0].to, ['pat@example.com']);
+    assert.match(sent[0].text, /Fully booked <that week>\./);
+    assert.ok(sent[0].html.includes('Fully booked &lt;that week&gt;.'));
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+
+  const row = db.prepare('SELECT declined_at, decline_reason FROM inquiries WHERE id = ?').get(id);
+  assert.ok(row.declined_at);
+  assert.equal(row.decline_reason, 'Fully booked <that week>.');
+  // Can't decline twice, and not without an admin session.
+  assert.equal((await post(`/api/admin/inquiries/${id}/decline`, { reason: 'x' }, { cookie })).status, 409);
+  assert.equal((await post(`/api/admin/inquiries/${id}/decline`, { reason: 'x' })).status, 401);
+});

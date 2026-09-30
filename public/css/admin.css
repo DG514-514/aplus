@@ -79,3 +79,13 @@
 .modal-head p { margin: 0; font-size: .95rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 option.add-new { font-weight: 700; }
+
+/* ---------- Decline ---------- */
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #8a3a30; }
+.btn-danger-outline { border-color: var(--danger); color: var(--danger); background: transparent; }
+.btn-danger-outline:hover { background: var(--danger-bg); }
+.chip-declined { background: var(--danger-bg); color: var(--danger); margin-left: 0; }
+.decline-note { background: var(--danger-bg); color: var(--ink); padding: 10px 14px; border-radius: 8px; font-size: .92rem; }
+.email-preview { background: var(--sage-50); border-radius: 8px; padding: 12px 16px; font-size: .92rem; }
+.email-preview p { margin: 6px 0 0; }

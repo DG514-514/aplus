@@ -302,6 +302,31 @@ router.post('/email-test', async (_req, res) => {
 
 /* ---------- Website quote requests ---------- */
 
+router.post('/inquiries/:id/decline', async (req, res) => {
+  const inquiry = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(Number(req.params.id));
+  if (!inquiry) return res.status(404).json({ error: 'Quote request not found.' });
+  if (inquiry.invoice_number) return res.status(409).json({ error: `This request was already invoiced (${inquiry.invoice_number}).` });
+  if (inquiry.declined_at) return res.status(409).json({ error: 'This request was already declined.' });
+
+  const reason = str(req.body?.reason, 1500);
+  const sendEmail = req.body?.sendEmail !== false;
+  if (sendEmail && !reason) return res.status(400).json({ error: 'Add a reason to include in the email.' });
+
+  db.prepare("UPDATE inquiries SET declined_at = datetime('now'), decline_reason = ? WHERE id = ?")
+    .run(reason || null, inquiry.id);
+
+  let email = 'skipped';
+  if (sendEmail) {
+    try {
+      await notify.sendDeclineEmail({ inquiry, reason });
+      email = 'sent';
+    } catch (err) {
+      email = err.message;
+    }
+  }
+  res.json({ ok: true, email });
+});
+
 router.delete('/inquiries/:id', (req, res) => {
   db.prepare('DELETE FROM inquiries WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });

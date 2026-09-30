@@ -95,6 +95,8 @@ const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).a
 if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');
 if (!hasColumn('inquiries', 'bedrooms')) db.exec('ALTER TABLE inquiries ADD COLUMN bedrooms TEXT');
 if (!hasColumn('inquiries', 'bathrooms')) db.exec('ALTER TABLE inquiries ADD COLUMN bathrooms TEXT');
+if (!hasColumn('inquiries', 'declined_at')) db.exec('ALTER TABLE inquiries ADD COLUMN declined_at TEXT');
+if (!hasColumn('inquiries', 'decline_reason')) db.exec('ALTER TABLE inquiries ADD COLUMN decline_reason TEXT');
 if (!hasColumn('invoices', 'service_date')) db.exec('ALTER TABLE invoices ADD COLUMN service_date TEXT');
 if (!hasColumn('invoices', 'service_time')) db.exec('ALTER TABLE invoices ADD COLUMN service_time TEXT');
 

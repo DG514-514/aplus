@@ -193,6 +193,38 @@ function sendInvoiceEmail({ client, invoice, items }) {
   }));
 }
 
+// Lets a customer know their quote request can't be taken on, with the owner's reason.
+function sendDeclineEmail({ inquiry, reason }) {
+  const first = inquiry.name.split(' ')[0];
+  const text = [
+    `Hi ${first},`,
+    '',
+    'Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.',
+    '',
+    reason,
+    '',
+    'If anything changes or you have any questions, just reply to this email — we’d be happy to help in the future.',
+    '',
+    'Best regards,',
+    'A+ Cleaning Solutions',
+  ].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      <p>Hi ${escapeHtml(first)},</p>
+      <p>Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.</p>
+      <p style="background:#f3f6f1;padding:12px 16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(reason)}</p>
+      <p>If anything changes or you have any questions, just reply to this email — we’d be happy to help in the future.</p>
+      <p style="color:#66705f">Best regards,<br>A+ Cleaning Solutions</p>
+    </div>`;
+  return track(sendEmail({
+    to: [inquiry.email],
+    replyTo: config().to[0],
+    subject: 'Your A+ Cleaning Solutions quote request',
+    text,
+    html,
+  }));
+}
+
 // Tells the business a client paid.
 function sendPaymentAlert({ client, invoice }) {
   const text = `${client.name} (${client.email}) paid invoice ${invoice.invoice_number}: ${money(invoice.amount_cents)}.`;
@@ -210,5 +242,5 @@ function emailStatus() {
 }
 
 module.exports = {
-  sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, emailStatus, buildInquiryEmail, formatService,
+  sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, sendDeclineEmail, emailStatus, buildInquiryEmail, formatService,
 };

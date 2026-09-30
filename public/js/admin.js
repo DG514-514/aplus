@@ -59,7 +59,7 @@ async function refresh() {
   Object.assign(state, await api('/overview'));
   $('count-orders').textContent = state.orders.length || '';
   $('count-clients').textContent = state.clients.length || '';
-  $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number).length || '';
+  $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number && !i.declined_at).length || '';
   $('count-invoices').textContent = state.invoices.filter((i) => i.status === 'open').length || '';
   renderClientOptions();
   renderOrders();
@@ -366,12 +366,10 @@ function renderInquiries() {
         inq.phone ? ` · ${inq.phone}` : null),
       el('p', { class: 'sub' }, [inq.plan, inq.residence, roomSummary(inq)].filter(Boolean).join(' · ') || ''),
       inq.message ? el('p', { class: 'inquiry-msg' }, inq.message) : null,
-      el('div', { class: 'row-actions' },
-        inq.invoice_number
-          ? el('span', { class: 'chip' }, `✓ Invoiced ${inq.invoice_number}`)
-          : el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveInquiry(inq) }, 'Approve & Invoice'),
-        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
-        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => archiveInquiry(inq) }, 'Archive'))));
+      inq.declined_at
+        ? el('p', { class: 'decline-note' }, el('strong', {}, 'Reason given: '), inq.decline_reason || '(no reason recorded)')
+        : null,
+      el('div', { class: 'row-actions' }, ...inquiryActions(inq))));
   }
 }
 
@@ -385,6 +383,67 @@ function clientFromInquiry(inq) {
   form.residence.value = inq.residence || '';
   form.password.value = generatePassword();
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function inquiryActions(inq) {
+  const archive = el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => archiveInquiry(inq) }, 'Archive');
+  if (inq.invoice_number) return [el('span', { class: 'chip' }, `✓ Invoiced ${inq.invoice_number}`), archive];
+  if (inq.declined_at) {
+    const when = new Date(inq.declined_at.replace(' ', 'T') + 'Z').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    return [el('span', { class: 'chip chip-declined' }, `✕ Declined ${when}`), archive];
+  }
+  return [
+    el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveInquiry(inq) }, 'Approve & Invoice'),
+    el('button', { type: 'button', class: 'btn btn-danger-outline btn-sm', onclick: () => openDeclineDialog(inq) }, 'Decline'),
+    el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
+    archive,
+  ];
+}
+
+/* ---------- Declining a quote request ---------- */
+
+let decliningInquiry = null;
+
+function openDeclineDialog(inq) {
+  decliningInquiry = inq;
+  const form = $('decline-form');
+  form.reset();
+  formError(form, '');
+  $('dc-email').checked = true;
+  $('dc-who').textContent = `${inq.name} · ${inq.email}`;
+  $('decline-dialog').showModal();
+  $('dc-reason').focus();
+}
+
+function closeDeclineDialog() {
+  $('decline-dialog').close();
+  decliningInquiry = null;
+}
+
+async function submitDecline(e) {
+  e.preventDefault();
+  const form = e.target;
+  const reason = $('dc-reason').value.trim();
+  const sendEmail = $('dc-email').checked;
+  if (sendEmail && !reason) {
+    formError(form, 'Add a reason to include in the email, or untick “Email the reason to the customer”.');
+    return;
+  }
+  const inq = decliningInquiry;
+  const btn = $('dc-submit');
+  btn.disabled = true;
+  try {
+    const { email } = await api(`/inquiries/${inq.id}/decline`, 'POST', { reason, sendEmail });
+    closeDeclineDialog();
+    await refresh();
+    if (email === 'sent') toast(`Declined — ${inq.name} has been emailed.`);
+    else if (email === 'skipped') toast(`${inq.name}’s request marked as declined.`);
+    else alert(`The request was marked as declined, but the email didn’t send:\n\n${email}`);
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Approving a quote: make sure the client has a login, then open a pre-filled invoice.
@@ -678,6 +737,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   $('new-client-form').addEventListener('submit', submitNewClient);
+  $('decline-form').addEventListener('submit', submitDecline);
+  $('dc-cancel').addEventListener('click', closeDeclineDialog);
+  $('dc-email').addEventListener('change', () => {
+    $('dc-submit').textContent = $('dc-email').checked ? 'Decline & Send' : 'Decline';
+  });
   $('nc-cancel').addEventListener('click', closeNewClientDialog);
   $('new-client-dialog').addEventListener('cancel', (e) => { e.preventDefault(); closeNewClientDialog(); });
   $('nc-gen').addEventListener('click', () => { $('nc-password').value = generatePassword(); });
