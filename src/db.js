@@ -93,6 +93,8 @@ db.exec(`
 // Columns added after launch: add them to existing databases.
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
 if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');
+if (!hasColumn('invoices', 'service_date')) db.exec('ALTER TABLE invoices ADD COLUMN service_date TEXT');
+if (!hasColumn('invoices', 'service_time')) db.exec('ALTER TABLE invoices ADD COLUMN service_time TEXT');
 
 // Order numbers follow the autoincrement sequence, so they are never reused even after deletes.
 db.nextOrderNumber = () => {

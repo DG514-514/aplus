@@ -130,6 +130,19 @@ function sendTestEmail() {
 }
 
 const money = (cents) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100);
+// "2026-10-12", "14:00" → "Monday, October 12, 2026 at 2:00 p.m."
+function formatService(date, time) {
+  if (!date) return '';
+  const [y, m, d] = date.split('-').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-CA', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+  if (!time) return day;
+  const [h, min] = time.split(':').map(Number);
+  const clock = new Date(Date.UTC(2000, 0, 1, h, min)).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+  return `${day} at ${clock}`;
+}
+
 const siteUrl = () => (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 
 // Tells a client they have a new invoice to pay in their portal.
@@ -138,11 +151,13 @@ function sendInvoiceEmail({ client, invoice, items }) {
   const first = client.name.split(' ')[0];
   const lines = items.map((i) => `${i.description}: ${money(i.amount_cents)}`);
   const due = invoice.due_date ? `Due ${invoice.due_date}. ` : '';
+  const service = formatService(invoice.service_date, invoice.service_time);
   const text = [
     `Hi ${first},`,
     '',
     `You have a new invoice (${invoice.invoice_number}) from A+ Cleaning Solutions for ${money(invoice.amount_cents)}.`,
     '',
+    service ? `Service: ${service}` : null,
     ...lines,
     invoice.notes ? `\n${invoice.notes}` : null,
     '',
@@ -155,6 +170,7 @@ function sendInvoiceEmail({ client, invoice, items }) {
     <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px">
       <p>Hi ${escapeHtml(first)},</p>
       <p>You have a new invoice <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
+      ${service ? `<p style="background:#f3f6f1;padding:10px 14px;border-radius:8px">🗓️ <strong>Service:</strong> ${escapeHtml(service)}</p>` : ''}
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
         ${items.map((i) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e3e0d8">${escapeHtml(i.description)}</td>
           <td style="padding:8px 0;border-bottom:1px solid #e3e0d8;text-align:right">${money(i.amount_cents)}</td></tr>`).join('')}
@@ -192,5 +208,5 @@ function emailStatus() {
 }
 
 module.exports = {
-  sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, emailStatus, buildInquiryEmail,
+  sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, emailStatus, buildInquiryEmail, formatService,
 };

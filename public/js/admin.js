@@ -405,6 +405,12 @@ async function archiveInquiry(inq) {
 /* ---------- Invoices ---------- */
 
 const todayIso = () => new Date().toLocaleDateString('en-CA');
+
+// "14:00" → "2:00 p.m."
+const fmtTime = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
+};
 const addDaysIso = (days) => {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -483,6 +489,8 @@ async function submitInvoice(e) {
     const { invoiceNumber, email } = await api('/invoices', 'POST', {
       clientId: $('i-client').value,
       dueDate: $('i-due').value,
+      serviceDate: $('i-service-date').value,
+      serviceTime: $('i-service-time').value,
       notes: $('i-notes').value,
       items: readItems(),
       inquiryId: state.invoiceInquiry?.id,
@@ -532,7 +540,10 @@ function renderInvoices() {
       el('td', { 'data-label': 'Client' }, el('div', {},
         el('strong', {}, inv.client_name),
         el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')))),
-      el('td', { 'data-label': 'Sent' }, fmtDate(inv.created_at.slice(0, 10))),
+      el('td', { 'data-label': 'Service' }, inv.service_date
+        ? el('div', {}, el('strong', {}, fmtDate(inv.service_date)),
+          inv.service_time ? el('span', { class: 'sub' }, fmtTime(inv.service_time)) : null)
+        : el('span', { class: 'sub' }, `Sent ${fmtDate(inv.created_at.slice(0, 10))}`)),
       el('td', { 'data-label': 'Due' }, inv.due_date ? fmtDate(inv.due_date) : '—'),
       el('td', { 'data-label': 'Status' }, el('span', { class: `badge badge-${cls}` }, label)),
       el('td', { 'data-label': 'Total', class: 'num' }, money.format(inv.amount_cents / 100)),

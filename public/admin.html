@@ -181,8 +181,16 @@
             <select id="i-client" name="clientId" required></select>
           </div>
           <div class="field">
-            <label for="i-due">Due date <span class="optional">(optional)</span></label>
+            <label for="i-due">Payment due date <span class="optional">(optional)</span></label>
             <input id="i-due" name="dueDate" type="date">
+          </div>
+          <div class="field">
+            <label for="i-service-date">Requested service date <span class="optional">(optional)</span></label>
+            <input id="i-service-date" name="serviceDate" type="date">
+          </div>
+          <div class="field">
+            <label for="i-service-time">Requested service time <span class="optional">(optional)</span></label>
+            <input id="i-service-time" name="serviceTime" type="time" step="900">
           </div>
           <div class="field full">
             <label>Line items</label>
@@ -208,7 +216,7 @@
         </div>
         <div class="table-wrap">
           <table class="orders admin-table">
-            <thead><tr><th>Invoice</th><th>Client</th><th>Sent</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr></thead>
+            <thead><tr><th>Invoice</th><th>Client</th><th>Service</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr></thead>
             <tbody id="invoices-body"></tbody>
           </table>
         </div>

@@ -152,3 +152,5 @@
 .badge-open { background: var(--amber-bg); color: var(--amber); }
 .badge-overdue { background: var(--danger-bg); color: var(--danger); }
 .badge-paid { background: var(--sage-100); color: var(--sage-700); }
+.invoice-service { background: var(--sage-50); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: .96rem; }
+.invoice-service strong { color: var(--forest); }
