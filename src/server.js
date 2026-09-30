@@ -63,6 +63,9 @@ app.use('/api', (req, res, next) => {
 
 const str = (value, max = 200) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BEDROOMS = ['1', '2', '3', '4', '5', '6+'];
+const BATHROOMS = ['1', '1.5', '2', '2.5', '3', '3.5', '4+'];
+const pick = (value, allowed) => (allowed.includes(value) ? value : null);
 
 /* ---------- Auth ---------- */
 
@@ -197,6 +200,8 @@ app.post('/api/inquiries', (req, res) => {
     email: str(body.email, 254),
     phone: str(body.phone, 40),
     residence: str(body.residence, 160),
+    bedrooms: pick(str(body.bedrooms, 3), BEDROOMS),
+    bathrooms: pick(str(body.bathrooms, 3), BATHROOMS),
     plan: str(body.plan, 40),
     message: str(body.message, 2000),
   };
@@ -205,8 +210,8 @@ app.post('/api/inquiries', (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO inquiries (name, email, phone, residence, plan, message)
-    VALUES (:name, :email, :phone, :residence, :plan, :message)
+    INSERT INTO inquiries (name, email, phone, residence, bedrooms, bathrooms, plan, message)
+    VALUES (:name, :email, :phone, :residence, :bedrooms, :bathrooms, :plan, :message)
   `).run(inquiry);
   res.status(201).json({ ok: true });
 

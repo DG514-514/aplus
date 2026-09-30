@@ -118,10 +118,21 @@ test('non-JSON POSTs are rejected (CSRF guard)', async () => {
 test('inquiry form stores valid leads and validates email', async () => {
   const bad = await post('/api/inquiries', { name: 'Sam', email: 'not-an-email' });
   assert.equal(bad.status, 400);
-  const ok = await post('/api/inquiries', { name: 'Sam', email: 'sam@example.com', plan: 'Weekly' });
+  const ok = await post('/api/inquiries', {
+    name: 'Sam', email: 'sam@example.com', plan: 'Weekly', residence: 'Maple Hall', bedrooms: '2', bathrooms: '1.5',
+  });
   assert.equal(ok.status, 201);
   const row = db.prepare('SELECT * FROM inquiries WHERE email = ?').get('sam@example.com');
   assert.equal(row.plan, 'Weekly');
+  assert.equal(row.residence, 'Maple Hall');
+  assert.equal(row.bedrooms, '2');
+  assert.equal(row.bathrooms, '1.5');
+
+  // Values outside the dropdown options are ignored rather than stored.
+  await post('/api/inquiries', { name: 'Kim', email: 'kim@example.com', bedrooms: '99', bathrooms: '<b>' });
+  const odd = db.prepare('SELECT * FROM inquiries WHERE email = ?').get('kim@example.com');
+  assert.equal(odd.bedrooms, null);
+  assert.equal(odd.bathrooms, null);
 });
 
 test('admin area requires owner credentials and can manage clients and orders', async () => {
@@ -179,7 +190,7 @@ test('quote requests trigger an email alert when email is configured', async () 
   process.env.NOTIFY_EMAIL = 'info@example.com';
   try {
     const res = await post('/api/inquiries',
-      { name: 'Jamie <b>Lee</b>', email: 'jamie@example.com', plan: 'Monthly', message: 'Hi there' });
+      { name: 'Jamie <b>Lee</b>', email: 'jamie@example.com', plan: 'Monthly', bedrooms: '3', bathrooms: '2', message: 'Hi there' });
     assert.equal(res.status, 201);
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(sent.length, 1);
@@ -188,6 +199,8 @@ test('quote requests trigger an email alert when email is configured', async () 
     assert.match(sent[0].subject, /Jamie <b>Lee<\/b> \(Monthly\)/);
     assert.ok(sent[0].html.includes('Jamie &lt;b&gt;Lee&lt;/b&gt;'));
     assert.ok(!sent[0].html.includes('<b>Lee</b>'));
+    assert.match(sent[0].text, /Bedrooms: 3/);
+    assert.match(sent[0].text, /Bathrooms: 2/);
   } finally {
     global.fetch = realFetch;
     delete process.env.RESEND_API_KEY;

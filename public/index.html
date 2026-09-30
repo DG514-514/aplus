@@ -324,8 +324,24 @@
                 </select>
               </div>
               <div class="field full">
-                <label for="inq-residence">Residence &amp; room</label>
-                <input id="inq-residence" name="residence" placeholder="e.g. Maple Hall, Room 214">
+                <label for="inq-residence">Residence</label>
+                <input id="inq-residence" name="residence" autocomplete="street-address" placeholder="e.g. Maple Hall or street address">
+              </div>
+              <div class="field">
+                <label for="inq-bedrooms">Number of bedrooms</label>
+                <select id="inq-bedrooms" name="bedrooms">
+                  <option value="">Select…</option>
+                  <option>1</option><option>2</option><option>3</option>
+                  <option>4</option><option>5</option><option>6+</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="inq-bathrooms">Number of bathrooms</label>
+                <select id="inq-bathrooms" name="bathrooms">
+                  <option value="">Select…</option>
+                  <option>1</option><option>1.5</option><option>2</option>
+                  <option>2.5</option><option>3</option><option>3.5</option><option>4+</option>
+                </select>
               </div>
               <div class="field full">
                 <label for="inq-message">Anything else we should know?</label>
