@@ -33,6 +33,7 @@
       <button role="tab" type="button" class="tab" aria-selected="true" data-view="orders">Orders <span class="count" id="count-orders"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="clients">Clients <span class="count" id="count-clients"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="invoices">Invoices <span class="count" id="count-invoices"></span></button>
+      <button role="tab" type="button" class="tab" aria-selected="false" data-view="cleaners">Suppliers / Cleaners <span class="count" id="count-cleaners"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="inquiries">Quote Requests <span class="count" id="count-inquiries"></span></button>
     </div>
 
@@ -224,6 +225,67 @@
       </div>
     </section>
 
+    <!-- Suppliers / cleaners -->
+    <section class="view" id="view-cleaners" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="cleaner-form-title">Add a cleaner</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="cleaner-cancel" hidden>Cancel Edit</button>
+        </div>
+        <form id="cleaner-form" class="form-grid admin-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="cl-name">Contact name</label>
+            <input id="cl-name" name="name" required>
+          </div>
+          <div class="field">
+            <label for="cl-company">Company <span class="optional">(optional)</span></label>
+            <input id="cl-company" name="company" placeholder="e.g. Sparkle Crew LLC">
+          </div>
+          <div class="field">
+            <label for="cl-phone">Phone</label>
+            <input id="cl-phone" name="phone" type="tel">
+          </div>
+          <div class="field">
+            <label for="cl-email">Email</label>
+            <input id="cl-email" name="email" type="email">
+          </div>
+          <div class="field">
+            <label for="cl-area">Service area</label>
+            <input id="cl-area" name="area" placeholder="e.g. Miami / Coral Gables">
+          </div>
+          <div class="field">
+            <label for="cl-status">Status</label>
+            <select id="cl-status" name="active">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label>Services offered &amp; their cost to you</label>
+            <div id="cleaner-services" class="invoice-items"></div>
+            <div class="items-foot">
+              <button type="button" class="link-btn" id="add-cleaner-service">+ Add service</button>
+            </div>
+          </div>
+          <div class="field full">
+            <label for="cl-notes">Notes <span class="optional">(optional — only you see these)</span></label>
+            <textarea id="cl-notes" name="notes" rows="2" placeholder="Availability, languages, supplies they bring, payment details…"></textarea>
+          </div>
+          <div class="full"><button class="btn btn-primary" type="submit" id="cleaner-submit">Save Cleaner</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Your cleaners</h2>
+          <input type="search" id="cleaner-search" class="search" placeholder="Search name, area, service…" aria-label="Search cleaners">
+        </div>
+        <div id="cleaners-list" class="cleaner-list"></div>
+        <p class="empty" id="cleaners-empty" hidden>No cleaners yet — add your first one above.</p>
+      </div>
+    </section>
+
     <!-- Inquiries -->
     <section class="view" id="view-inquiries" hidden>
       <div class="panel email-panel">
@@ -241,6 +303,31 @@
       </div>
     </section>
   </main>
+
+  <dialog id="decline-dialog" class="modal" aria-labelledby="dc-title">
+    <form id="decline-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="dc-title">Decline quote request</h2>
+        <p class="muted" id="dc-who"></p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field full">
+        <label for="dc-reason">Reason <span class="optional">(included in the email to the customer)</span></label>
+        <textarea id="dc-reason" name="reason" rows="5" maxlength="1500"
+          placeholder="e.g. We’re fully booked for the dates you requested, but we’d love to help later in the semester."></textarea>
+      </div>
+      <div class="full email-preview">
+        <strong>The customer will receive:</strong>
+        <p>“Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.”</p>
+        <p class="muted">…followed by your reason, and an invitation to reply with any questions.</p>
+      </div>
+      <label class="check full"><input type="checkbox" id="dc-email" checked> Email the reason to the customer</label>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="dc-cancel">Cancel</button>
+        <button type="submit" class="btn btn-danger" id="dc-submit">Decline &amp; Send</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="new-client-dialog" class="modal" aria-labelledby="nc-title">
     <form id="new-client-form" class="form-grid admin-form" novalidate>

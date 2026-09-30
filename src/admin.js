@@ -100,7 +100,7 @@ router.get('/overview', (_req, res) => {
     ORDER BY o.service_date DESC, o.id DESC
   `).all();
   const inquiries = db.prepare('SELECT * FROM inquiries ORDER BY id DESC').all();
-  res.json({ clients, orders, inquiries, invoices: invoices.listAll(), payments: stripe.status() });
+  res.json({ clients, orders, inquiries, invoices: invoices.listAll(), cleaners: listCleaners(), payments: stripe.status() });
 });
 
 /* ---------- Clients ---------- */
@@ -285,6 +285,92 @@ router.post('/invoices/:id/void', (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- Suppliers / cleaners ---------- */
+
+function listCleaners() {
+  const services = db.prepare('SELECT cleaner_id, service, cost_cents, unit FROM cleaner_services ORDER BY id').all();
+  return db.prepare('SELECT * FROM cleaners ORDER BY active DESC, name COLLATE NOCASE').all().map((c) => ({
+    ...c,
+    active: Boolean(c.active),
+    services: services.filter((s) => s.cleaner_id === c.id).map(({ cleaner_id, ...s }) => s),
+  }));
+}
+
+function readCleaner(b) {
+  const cleaner = {
+    name: str(b.name, 120),
+    company: orNull(str(b.company, 120)),
+    email: orNull(str(b.email, 254).toLowerCase()),
+    phone: orNull(str(b.phone, 40)),
+    area: orNull(str(b.area, 160)),
+    notes: orNull(str(b.notes, 2000)),
+    active: b.active === false ? 0 : 1,
+  };
+  if (!cleaner.name) return { error: 'Add the cleaner’s name.' };
+  if (cleaner.email && !EMAIL_RE.test(cleaner.email)) return { error: 'Enter a valid email or leave it blank.' };
+  const services = (Array.isArray(b.services) ? b.services : [])
+    .map((s) => ({
+      service: str(s?.service, 160),
+      cost_cents: s?.cost === '' || s?.cost == null ? null : parseAmount(s.cost),
+      unit: s?.unit === 'hour' ? 'hour' : 'clean',
+    }))
+    .filter((s) => s.service || s.cost_cents !== null);
+  if (services.some((s) => !s.service)) return { error: 'Every service needs a name.' };
+  if (services.some((s) => s.cost_cents === null)) return { error: 'Enter a valid cost for every service (e.g. 70 or 70.00).' };
+  if (services.length > 30) return { error: 'Up to 30 services per cleaner.' };
+  return { cleaner, services };
+}
+
+function saveServices(cleanerId, services) {
+  db.prepare('DELETE FROM cleaner_services WHERE cleaner_id = ?').run(cleanerId);
+  const insert = db.prepare('INSERT INTO cleaner_services (cleaner_id, service, cost_cents, unit) VALUES (?, ?, ?, ?)');
+  for (const s of services) insert.run(cleanerId, s.service, s.cost_cents, s.unit);
+}
+
+router.post('/cleaners', (req, res) => {
+  const { cleaner, services, error } = readCleaner(req.body || {});
+  if (error) return res.status(400).json({ error });
+  db.exec('BEGIN');
+  try {
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO cleaners (name, company, email, phone, area, notes, active)
+      VALUES (:name, :company, :email, :phone, :area, :notes, :active)
+    `).run(cleaner);
+    saveServices(lastInsertRowid, services);
+    db.exec('COMMIT');
+    res.status(201).json({ id: Number(lastInsertRowid) });
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+});
+
+router.put('/cleaners/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!db.prepare('SELECT 1 FROM cleaners WHERE id = ?').get(id)) return res.status(404).json({ error: 'Cleaner not found.' });
+  const { cleaner, services, error } = readCleaner(req.body || {});
+  if (error) return res.status(400).json({ error });
+  db.exec('BEGIN');
+  try {
+    db.prepare(`
+      UPDATE cleaners SET name = :name, company = :company, email = :email, phone = :phone,
+        area = :area, notes = :notes, active = :active WHERE id = :id
+    `).run({ ...cleaner, id });
+    saveServices(id, services);
+    db.exec('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+});
+
+router.delete('/cleaners/:id', (req, res) => {
+  const result = db.prepare('DELETE FROM cleaners WHERE id = ?').run(Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Cleaner not found.' });
+  res.json({ ok: true });
+});
+
 /* ---------- Email alerts ---------- */
 
 router.get('/email-status', (_req, res) => {
@@ -301,6 +387,31 @@ router.post('/email-test', async (_req, res) => {
 });
 
 /* ---------- Website quote requests ---------- */
+
+router.post('/inquiries/:id/decline', async (req, res) => {
+  const inquiry = db.prepare('SELECT * FROM inquiries WHERE id = ?').get(Number(req.params.id));
+  if (!inquiry) return res.status(404).json({ error: 'Quote request not found.' });
+  if (inquiry.invoice_number) return res.status(409).json({ error: `This request was already invoiced (${inquiry.invoice_number}).` });
+  if (inquiry.declined_at) return res.status(409).json({ error: 'This request was already declined.' });
+
+  const reason = str(req.body?.reason, 1500);
+  const sendEmail = req.body?.sendEmail !== false;
+  if (sendEmail && !reason) return res.status(400).json({ error: 'Add a reason to include in the email.' });
+
+  db.prepare("UPDATE inquiries SET declined_at = datetime('now'), decline_reason = ? WHERE id = ?")
+    .run(reason || null, inquiry.id);
+
+  let email = 'skipped';
+  if (sendEmail) {
+    try {
+      await notify.sendDeclineEmail({ inquiry, reason });
+      email = 'sent';
+    } catch (err) {
+      email = err.message;
+    }
+  }
+  res.json({ ok: true, email });
+});
 
 router.delete('/inquiries/:id', (req, res) => {
   db.prepare('DELETE FROM inquiries WHERE id = ?').run(Number(req.params.id));

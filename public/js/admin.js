@@ -4,7 +4,7 @@ const money = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD
 const STATUS_LABELS = { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' };
 
 const state = {
-  clients: [], orders: [], inquiries: [], invoices: [], payments: {},
+  clients: [], orders: [], inquiries: [], invoices: [], cleaners: [], payments: {}, editingCleaner: null,
   editingOrder: null, editingClient: null, invoiceInquiry: null, pendingInquiry: null,
 };
 
@@ -59,13 +59,15 @@ async function refresh() {
   Object.assign(state, await api('/overview'));
   $('count-orders').textContent = state.orders.length || '';
   $('count-clients').textContent = state.clients.length || '';
-  $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number).length || '';
+  $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number && !i.declined_at).length || '';
+  $('count-cleaners').textContent = state.cleaners.filter((c) => c.active).length || '';
   $('count-invoices').textContent = state.invoices.filter((i) => i.status === 'open').length || '';
   renderClientOptions();
   renderOrders();
   renderClients();
   renderInquiries();
   renderInvoices();
+  renderCleaners();
   renderPaymentsStatus();
 }
 
@@ -366,12 +368,10 @@ function renderInquiries() {
         inq.phone ? ` · ${inq.phone}` : null),
       el('p', { class: 'sub' }, [inq.plan, inq.residence, roomSummary(inq)].filter(Boolean).join(' · ') || ''),
       inq.message ? el('p', { class: 'inquiry-msg' }, inq.message) : null,
-      el('div', { class: 'row-actions' },
-        inq.invoice_number
-          ? el('span', { class: 'chip' }, `✓ Invoiced ${inq.invoice_number}`)
-          : el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveInquiry(inq) }, 'Approve & Invoice'),
-        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
-        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => archiveInquiry(inq) }, 'Archive'))));
+      inq.declined_at
+        ? el('p', { class: 'decline-note' }, el('strong', {}, 'Reason given: '), inq.decline_reason || '(no reason recorded)')
+        : null,
+      el('div', { class: 'row-actions' }, ...inquiryActions(inq))));
   }
 }
 
@@ -385,6 +385,67 @@ function clientFromInquiry(inq) {
   form.residence.value = inq.residence || '';
   form.password.value = generatePassword();
   form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function inquiryActions(inq) {
+  const archive = el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => archiveInquiry(inq) }, 'Archive');
+  if (inq.invoice_number) return [el('span', { class: 'chip' }, `✓ Invoiced ${inq.invoice_number}`), archive];
+  if (inq.declined_at) {
+    const when = new Date(inq.declined_at.replace(' ', 'T') + 'Z').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    return [el('span', { class: 'chip chip-declined' }, `✕ Declined ${when}`), archive];
+  }
+  return [
+    el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveInquiry(inq) }, 'Approve & Invoice'),
+    el('button', { type: 'button', class: 'btn btn-danger-outline btn-sm', onclick: () => openDeclineDialog(inq) }, 'Decline'),
+    el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => clientFromInquiry(inq) }, 'Create Client Login'),
+    archive,
+  ];
+}
+
+/* ---------- Declining a quote request ---------- */
+
+let decliningInquiry = null;
+
+function openDeclineDialog(inq) {
+  decliningInquiry = inq;
+  const form = $('decline-form');
+  form.reset();
+  formError(form, '');
+  $('dc-email').checked = true;
+  $('dc-who').textContent = `${inq.name} · ${inq.email}`;
+  $('decline-dialog').showModal();
+  $('dc-reason').focus();
+}
+
+function closeDeclineDialog() {
+  $('decline-dialog').close();
+  decliningInquiry = null;
+}
+
+async function submitDecline(e) {
+  e.preventDefault();
+  const form = e.target;
+  const reason = $('dc-reason').value.trim();
+  const sendEmail = $('dc-email').checked;
+  if (sendEmail && !reason) {
+    formError(form, 'Add a reason to include in the email, or untick “Email the reason to the customer”.');
+    return;
+  }
+  const inq = decliningInquiry;
+  const btn = $('dc-submit');
+  btn.disabled = true;
+  try {
+    const { email } = await api(`/inquiries/${inq.id}/decline`, 'POST', { reason, sendEmail });
+    closeDeclineDialog();
+    await refresh();
+    if (email === 'sent') toast(`Declined — ${inq.name} has been emailed.`);
+    else if (email === 'skipped') toast(`${inq.name}’s request marked as declined.`);
+    else alert(`The request was marked as declined, but the email didn’t send:\n\n${email}`);
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // Approving a quote: make sure the client has a login, then open a pre-filled invoice.
@@ -617,6 +678,140 @@ async function voidInvoice(inv) {
   } catch (err) { toast(err.message); }
 }
 
+/* ---------- Suppliers / cleaners ---------- */
+
+function addCleanerServiceRow(service = '', cost = '', unit = 'clean') {
+  const known = SERVICES.find((s) => s.name === service);
+  const picker = el('select', { class: 'item-service', 'aria-label': 'Service' },
+    el('option', { value: '' }, 'Choose a service…'),
+    ...SERVICES.map((s) => el('option', { value: s.name }, s.name)),
+    el('option', { value: 'custom' }, 'Other service…'));
+  const name = el('input', { class: 'item-desc', placeholder: 'Service, e.g. Deep clean, Move-out, Carpet', 'aria-label': 'Service name', value: service });
+  const costInput = el('input', { class: 'item-amount', type: 'number', min: '0', step: '0.01', placeholder: 'Cost $', 'aria-label': 'Cost', value: cost });
+  const unitSelect = el('select', { class: 'item-unit', 'aria-label': 'Charged' },
+    el('option', { value: 'clean' }, 'per clean'), el('option', { value: 'hour' }, 'per hour'));
+  unitSelect.value = unit;
+  picker.value = known ? known.name : (service ? 'custom' : '');
+  picker.addEventListener('change', () => {
+    if (picker.value === 'custom') { name.value = ''; name.focus(); } else name.value = picker.value;
+  });
+  const row = el('div', { class: 'item-row cleaner-row' }, picker, name, costInput, unitSelect,
+    el('button', {
+      type: 'button', class: 'link-btn danger', 'aria-label': 'Remove service',
+      onclick: () => { if ($('cleaner-services').children.length > 1) row.remove(); else { name.value = ''; costInput.value = ''; picker.value = ''; } },
+    }, '✕'));
+  $('cleaner-services').append(row);
+  return row;
+}
+
+function resetCleanerForm() {
+  const form = $('cleaner-form');
+  form.reset();
+  formError(form, '');
+  state.editingCleaner = null;
+  $('cleaner-services').replaceChildren();
+  addCleanerServiceRow();
+  $('cleaner-form-title').textContent = 'Add a cleaner';
+  $('cleaner-submit').textContent = 'Save Cleaner';
+  $('cleaner-cancel').hidden = true;
+}
+
+function editCleaner(c) {
+  resetCleanerForm();
+  const form = $('cleaner-form');
+  state.editingCleaner = c;
+  form.name.value = c.name;
+  form.company.value = c.company || '';
+  form.phone.value = c.phone || '';
+  form.email.value = c.email || '';
+  form.area.value = c.area || '';
+  form.notes.value = c.notes || '';
+  form.active.value = String(c.active);
+  if (c.services.length) {
+    $('cleaner-services').replaceChildren();
+    for (const s of c.services) addCleanerServiceRow(s.service, (s.cost_cents / 100).toFixed(2), s.unit);
+  }
+  $('cleaner-form-title').textContent = `Edit ${c.name}`;
+  $('cleaner-submit').textContent = 'Save Changes';
+  $('cleaner-cancel').hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function submitCleaner(e) {
+  e.preventDefault();
+  const form = e.target;
+  const services = [...$('cleaner-services').querySelectorAll('.cleaner-row')].map((row) => ({
+    service: row.querySelector('.item-desc').value.trim(),
+    cost: row.querySelector('.item-amount').value,
+    unit: row.querySelector('.item-unit').value,
+  })).filter((s) => s.service || s.cost);
+  const body = {
+    name: form.name.value, company: form.company.value, phone: form.phone.value, email: form.email.value,
+    area: form.area.value, notes: form.notes.value, active: form.active.value === 'true', services,
+  };
+  try {
+    if (state.editingCleaner) {
+      await api(`/cleaners/${state.editingCleaner.id}`, 'PUT', body);
+      toast(`${body.name} updated.`);
+    } else {
+      await api('/cleaners', 'POST', body);
+      toast(`${body.name} added.`);
+    }
+    resetCleanerForm();
+    await refresh();
+  } catch (err) { formError(form, err.message); }
+}
+
+async function deleteCleaner(c) {
+  if (!confirm(`Delete ${c.name}${c.company ? ` (${c.company})` : ''}? This can’t be undone.`)) return;
+  try {
+    await api(`/cleaners/${c.id}`, 'DELETE');
+    toast(`${c.name} deleted.`);
+    await refresh();
+  } catch (err) { toast(err.message); }
+}
+
+function renderCleaners() {
+  const q = $('cleaner-search').value.trim().toLowerCase();
+  const rows = state.cleaners.filter((c) => !q
+    || [c.name, c.company, c.area, c.email, c.phone, c.notes, ...c.services.map((s) => s.service)].join(' ').toLowerCase().includes(q));
+  const list = $('cleaners-list');
+  list.replaceChildren();
+  $('cleaners-empty').hidden = rows.length > 0;
+
+  for (const c of rows) {
+    const contact = el('p', { class: 'cleaner-contact' });
+    if (c.phone) contact.append(el('a', { href: `tel:${c.phone.replace(/[^\d+]/g, '')}` }, `📞 ${c.phone}`));
+    if (c.email) contact.append(el('a', { href: `mailto:${c.email}` }, `✉️ ${c.email}`));
+    if (c.area) contact.append(el('span', {}, `📍 ${c.area}`));
+
+    const services = el('table', { class: 'cleaner-services' }, el('tbody', {},
+      ...c.services.map((s) => {
+        const std = SERVICES.find((x) => x.name === s.service);
+        const margin = std && s.unit === 'clean' ? std.price * 100 - s.cost_cents : null;
+        return el('tr', {},
+          el('td', {}, s.service),
+          el('td', { class: 'num' }, `${money.format(s.cost_cents / 100)} / ${s.unit}`),
+          el('td', { class: 'num margin' }, margin === null ? ''
+            : el('span', { class: `margin-pill ${margin >= 0 ? 'pos' : 'neg'}` },
+              `You charge ${money.format(std.price)} · margin ${money.format(margin / 100)}`)));
+      })));
+
+    list.append(el('article', { class: `cleaner-card${c.active ? '' : ' inactive'}` },
+      el('div', { class: 'cleaner-head' },
+        el('div', {},
+          el('h3', {}, c.name),
+          c.company ? el('span', { class: 'sub' }, c.company) : null),
+        el('div', { class: 'row-actions' },
+          el('span', { class: `badge ${c.active ? 'badge-completed' : 'badge-cancelled'}` }, c.active ? 'Active' : 'Inactive'),
+          el('button', { type: 'button', class: 'link-btn', onclick: () => editCleaner(c) }, 'Edit'),
+          el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteCleaner(c) }, 'Delete'))),
+      contact.children.length ? contact : null,
+      c.services.length ? services : el('p', { class: 'sub' }, 'No services listed yet.'),
+      c.notes ? el('p', { class: 'cleaner-notes' }, c.notes) : null));
+  }
+}
+
 /* ---------- Email alerts ---------- */
 
 async function loadEmailStatus() {
@@ -678,12 +873,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
   $('new-client-form').addEventListener('submit', submitNewClient);
+  $('decline-form').addEventListener('submit', submitDecline);
+  $('dc-cancel').addEventListener('click', closeDeclineDialog);
+  $('dc-email').addEventListener('change', () => {
+    $('dc-submit').textContent = $('dc-email').checked ? 'Decline & Send' : 'Decline';
+  });
   $('nc-cancel').addEventListener('click', closeNewClientDialog);
   $('new-client-dialog').addEventListener('cancel', (e) => { e.preventDefault(); closeNewClientDialog(); });
   $('nc-gen').addEventListener('click', () => { $('nc-password').value = generatePassword(); });
   $('add-item').addEventListener('click', () => addItemRow().querySelector('.item-desc').focus());
   $('invoice-search').addEventListener('input', renderInvoices);
   resetInvoiceForm();
+  resetCleanerForm();
+  $('cleaner-form').addEventListener('submit', submitCleaner);
+  $('cleaner-cancel').addEventListener('click', resetCleanerForm);
+  $('add-cleaner-service').addEventListener('click', () => addCleanerServiceRow().querySelector('.item-service').focus());
+  $('cleaner-search').addEventListener('input', renderCleaners);
   $('gen-password').addEventListener('click', () => { $('c-password').value = generatePassword(); });
   $('logout-btn').addEventListener('click', async () => {
     try { await api('/logout', 'POST'); } finally { window.location.assign('/admin'); }

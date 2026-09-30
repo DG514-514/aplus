@@ -186,17 +186,18 @@ p { margin: 0 0 1em; }
 
 /* ---------- Campuses ---------- */
 
-.campuses { padding: 88px 0; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.campuses { padding: 88px 0; background: var(--sage-50); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .campuses .section-head { margin-bottom: 40px; }
 .campus-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
 .campus {
-  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
-  padding: 26px 12px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--cream);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px;
+  padding: 22px 14px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff;
   transition: transform .25s, box-shadow .25s, border-color .25s;
 }
 .campus:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: var(--sage-100); }
+.campus-logo { width: 100%; max-width: 190px; height: 76px; object-fit: contain; margin-bottom: 6px; }
 .campus-mark {
-  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 8px;
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin: 6px 0 8px;
   background: var(--sage-100); color: var(--sage-700); border: 2px solid #fff; box-shadow: 0 0 0 1.5px var(--sage-100);
   font-family: var(--font-head); font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em;
 }
