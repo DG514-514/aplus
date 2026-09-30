@@ -90,6 +90,28 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cleaners (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    company    TEXT,
+    email      TEXT,
+    phone      TEXT,
+    area       TEXT,
+    notes      TEXT,
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS cleaner_services (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    cleaner_id INTEGER NOT NULL REFERENCES cleaners(id) ON DELETE CASCADE,
+    service    TEXT NOT NULL,
+    cost_cents INTEGER NOT NULL,
+    unit       TEXT NOT NULL DEFAULT 'clean' CHECK (unit IN ('clean', 'hour'))
+  );
+`);
+
 // Columns added after launch: add them to existing databases.
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
 if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');

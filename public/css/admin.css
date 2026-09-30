@@ -89,3 +89,32 @@ option.add-new { font-weight: 700; }
 .decline-note { background: var(--danger-bg); color: var(--ink); padding: 10px 14px; border-radius: 8px; font-size: .92rem; }
 .email-preview { background: var(--sage-50); border-radius: 8px; padding: 12px 16px; font-size: .92rem; }
 .email-preview p { margin: 6px 0 0; }
+
+/* ---------- Suppliers / cleaners ---------- */
+.item-row.cleaner-row { grid-template-columns: 250px 1fr 110px 120px auto; }
+.cleaner-list { display: grid; gap: 16px; }
+.cleaner-card { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px 20px; }
+.cleaner-card.inactive { opacity: .65; }
+.cleaner-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cleaner-head h3 { margin: 0; font-size: 1.1rem; }
+.cleaner-head .sub { color: var(--muted); font-size: .92rem; }
+.cleaner-head .row-actions { align-items: center; }
+.cleaner-contact { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0; font-size: .95rem; }
+.cleaner-contact a { text-decoration: none; }
+.cleaner-contact a:hover { text-decoration: underline; }
+.cleaner-services { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.cleaner-services td { padding: 8px 0; border-top: 1px solid var(--line); }
+.cleaner-services td.num { text-align: right; white-space: nowrap; padding-left: 16px; }
+.margin-pill { display: inline-block; font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.margin-pill.pos { background: var(--sage-100); color: var(--sage-700); }
+.margin-pill.neg { background: var(--danger-bg); color: var(--danger); }
+.cleaner-notes { margin: 10px 0 0; color: var(--muted); font-size: .92rem; white-space: pre-wrap; }
+@media (max-width: 900px) {
+  .item-row.cleaner-row { grid-template-columns: 1fr 100px 100px auto; }
+  .cleaner-services, .cleaner-services tbody { display: block; }
+  .cleaner-services tr { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; border-top: 1px solid var(--line); padding: 8px 0; }
+  .cleaner-services td { border-top: 0; padding: 0; }
+  .cleaner-services td.margin { grid-column: 1 / -1; text-align: left; padding: 6px 0 0; }
+  .cleaner-services td.margin:empty { display: none; }
+  .margin-pill { font-size: .75rem; }
+}

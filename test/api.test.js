@@ -419,3 +419,49 @@ test('owner can decline a quote request and the customer is emailed the reason',
   assert.equal((await post(`/api/admin/inquiries/${id}/decline`, { reason: 'x' }, { cookie })).status, 409);
   assert.equal((await post(`/api/admin/inquiries/${id}/decline`, { reason: 'x' })).status, 401);
 });
+
+test('owner can add, edit and delete cleaners with their services and costs', async () => {
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const cookie = adminLogin.headers.get('set-cookie').split(';')[0];
+  const put = (url, body) => fetch(base + url, { method: 'PUT', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify(body) });
+
+  assert.equal((await post('/api/admin/cleaners', { name: '' }, { cookie })).status, 400);
+  assert.equal((await post('/api/admin/cleaners', { name: 'X', services: [{ service: 'Studio', cost: '' }] }, { cookie })).status, 400);
+  assert.equal((await post('/api/admin/cleaners', { name: 'X', email: 'nope' }, { cookie })).status, 400);
+
+  const created = await post('/api/admin/cleaners', {
+    name: 'Maria Lopez', company: 'Sparkle Crew', phone: '305-555-0101', email: 'Maria@Example.com', area: 'Miami',
+    services: [{ service: 'Studio Standard Clean', cost: '70' }, { service: 'Deep clean', cost: '35', unit: 'hour' }],
+  }, { cookie });
+  assert.equal(created.status, 201);
+  const { id } = await created.json();
+
+  let { cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: { cookie } })).json();
+  let maria = cleaners.find((c) => c.id === id);
+  assert.equal(maria.email, 'maria@example.com');
+  assert.equal(maria.active, true);
+  assert.deepEqual(maria.services, [
+    { service: 'Studio Standard Clean', cost_cents: 7000, unit: 'clean' },
+    { service: 'Deep clean', cost_cents: 3500, unit: 'hour' },
+  ]);
+
+  const edited = await put(`/api/admin/cleaners/${id}`, {
+    name: 'Maria Lopez', active: false, services: [{ service: '1 Bedroom / 1 Bathroom Standard Clean', cost: '90.50' }],
+  });
+  assert.equal(edited.status, 200);
+  ({ cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: { cookie } })).json());
+  maria = cleaners.find((c) => c.id === id);
+  assert.equal(maria.active, false);
+  assert.equal(maria.company, null);
+  assert.deepEqual(maria.services, [{ service: '1 Bedroom / 1 Bathroom Standard Clean', cost_cents: 9050, unit: 'clean' }]);
+
+  // Clients can't see or manage cleaners.
+  const { cookie: clientCookie } = await login('alice@example.com', 'alicepass1');
+  assert.equal((await post('/api/admin/cleaners', { name: 'Y' }, { cookie: clientCookie })).status, 401);
+
+  const del = await fetch(`${base}/api/admin/cleaners/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', cookie }, body: '{}' });
+  assert.equal(del.status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cleaner_services WHERE cleaner_id = ?').get(id).n, 0);
+});
