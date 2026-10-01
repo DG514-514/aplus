@@ -118,3 +118,4 @@ option.add-new { font-weight: 700; }
   .cleaner-services td.margin:empty { display: none; }
   .margin-pill { font-size: .75rem; }
 }
+.terms-link { display: block; margin-top: 4px; font-size: .86rem; font-weight: 700; color: var(--sage-700); }

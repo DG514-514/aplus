@@ -314,11 +314,85 @@ async function setupAppStrip() {
   render();
 }
 
+/* ---------- Terms & Conditions (signed once, when the account is first opened) ---------- */
+
+function renderTerms(t) {
+  const body = document.getElementById('terms-body');
+  body.replaceChildren(el('p', { class: 'muted' }, `${t.company} · ${t.title} · Version ${t.version}`));
+  for (const section of t.sections) {
+    const wrap = el('section', {}, el('h3', {}, section.heading));
+    for (const block of section.blocks) {
+      wrap.append(block.type === 'list'
+        ? el('ul', {}, ...block.items.map((item) => el('li', {}, item)))
+        : el('p', {}, block.text));
+    }
+    body.append(wrap);
+  }
+}
+
+// Shows the pop-up and resolves once the client has signed. It can't be dismissed — only signed or signed out.
+async function requireTermsAcceptance(client) {
+  const t = await api('/api/terms');
+  renderTerms(t);
+  const dialog = document.getElementById('terms-dialog');
+  const form = document.getElementById('terms-form');
+  const nameInput = document.getElementById('terms-name');
+  const agree = document.getElementById('terms-agree');
+  const submit = document.getElementById('terms-submit');
+  const alertBox = form.querySelector('.alert');
+  nameInput.placeholder = `e.g. ${client.name}`;
+
+  const update = () => { submit.disabled = !(agree.checked && nameInput.value.trim().length >= 2); };
+  nameInput.addEventListener('input', update);
+  agree.addEventListener('change', update);
+  dialog.addEventListener('cancel', (e) => e.preventDefault());
+  document.getElementById('terms-signout').addEventListener('click', () => document.getElementById('logout-btn').click());
+
+  dialog.showModal();
+  document.getElementById('terms-body').scrollTop = 0;
+
+  return new Promise((resolve) => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (submit.disabled) return;
+      submit.disabled = true;
+      submit.textContent = 'Saving…';
+      alertBox.hidden = true;
+      try {
+        await api('/api/terms/accept', {
+          method: 'POST',
+          body: JSON.stringify({ signedName: nameInput.value.trim(), agree: agree.checked, version: t.version }),
+        });
+        dialog.close();
+        resolve();
+      } catch (err) {
+        alertBox.textContent = err.message;
+        alertBox.hidden = false;
+        submit.textContent = 'Agree';
+        update();
+      }
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   setupAppStrip();
   setupTabs();
   setupLogout();
   setupPasswordForm();
+
+  let me;
+  try {
+    me = await api('/api/me');
+    renderProfile(me.client);
+    if (!me.terms.accepted) await requireTermsAcceptance(me.client);
+  } catch (err) {
+    if (err.message === 'Signed out') return;
+    const box = document.getElementById('orders-error');
+    box.textContent = `We couldn’t load your account. ${err.message} Please refresh to try again.`;
+    box.hidden = false;
+    return;
+  }
 
   await handlePaymentReturn();
   loadInvoices().catch((err) => {
@@ -326,9 +400,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   try {
-    const [{ client }, { orders }] = await Promise.all([api('/api/me'), api('/api/orders')]);
+    const { orders } = await api('/api/orders');
     allOrders = orders;
-    renderProfile(client);
     renderStats(orders);
     renderOrders();
   } catch (err) {
