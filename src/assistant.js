@@ -13,6 +13,9 @@ const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 const MAX_TOOL_ROUNDS = 5;
 const CONVERSATION_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CONVERSATIONS = 30;
+// Long conversations re-send their whole history each turn; start a fresh one after this many exchanges
+// to keep cost and latency flat over a full day of talking (saved notes carry over).
+const MAX_EXCHANGES = 40;
 
 // What A+ charges clients (matches the invoice presets in the owner dashboard).
 const CLIENT_PRICES = [
@@ -147,9 +150,13 @@ function getConversation(id) {
     if (now - convo.updated > CONVERSATION_TTL_MS) conversations.delete(key);
   }
   let convo = id && conversations.get(id);
+  if (convo && convo.exchanges >= MAX_EXCHANGES) {
+    conversations.delete(convo.id);
+    convo = null;
+  }
   if (!convo) {
     if (conversations.size >= MAX_CONVERSATIONS) conversations.delete(conversations.keys().next().value);
-    convo = { id: crypto.randomUUID(), messages: [], updated: now };
+    convo = { id: crypto.randomUUID(), messages: [], updated: now, exchanges: 0, lastSnapshot: null };
     conversations.set(convo.id, convo);
   }
   convo.updated = now;
@@ -163,22 +170,28 @@ function request(messages, { effort = 'low', tools = true } = {}) {
     betas: [FALLBACK_BETA],
     fallbacks: 'default',
     output_config: { effort },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: `Business snapshot (live from the A+ dashboard):\n${snapshot()}` },
-    ],
+    // The system prompt never changes and the history is append-only, so the whole prefix is cached
+    // and each turn only pays full price for what's new.
+    cache_control: { type: 'ephemeral' },
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     ...(tools ? { tools: TOOLS } : {}),
     messages,
   });
 }
 
+const snapshotBlock = (snap) => `<business_snapshot>\nLive from the A+ dashboard (use for facts; it may update during the conversation):\n${snap}\n</business_snapshot>`;
+
 const textOf = (response) => response.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
 
 async function chat({ conversationId, text, meetingTranscript }) {
   const convo = getConversation(conversationId);
-  const userText = meetingTranscript
+  // The live business snapshot rides along in the user turn (only when it changed), keeping the cached prefix stable.
+  const snap = snapshot();
+  const context = snap !== convo.lastSnapshot ? `${snapshotBlock(snap)}\n\n` : '';
+  convo.lastSnapshot = snap;
+  const userText = context + (meetingTranscript
     ? `[Meeting mode] The meeting so far (most recent part of the live transcript):\n"""\n${meetingTranscript}\n"""\n\nThe owner just asked you: ${text}`
-    : text;
+    : text);
   const messages = [...convo.messages, { role: 'user', content: userText }];
   const saved = [];
 
@@ -208,13 +221,14 @@ async function chat({ conversationId, text, meetingTranscript }) {
   }
 
   convo.messages = messages;
+  convo.exchanges += 1;
   return { conversationId: convo.id, reply: textOf(response) || 'Done.', notes: saved };
 }
 
 async function summarizeMeeting({ title, transcript }) {
   const response = await request([{
     role: 'user',
-    content: `Here is the transcript of a meeting the owner of A+ Cleaning Solutions just had. It is automatic speech-to-text, so fix obvious recognition errors from context.\n\n"""\n${transcript}\n"""\n\nWrite meeting notes for the owner's records in plain text (no markdown symbols). Use these sections, each starting on its own line with the label followed by a colon: Summary (3-6 sentences), Key points, Decisions, Action items (who does what, by when if mentioned), Follow-ups or open questions. Under each section put one item per line starting with "- ". Write "None" where a section is empty. Then add one line starting "Assistant feedback:" with your brief, practical advice for the business based on the meeting.`,
+    content: `${snapshotBlock(snapshot())}\n\nHere is the transcript of a meeting the owner of A+ Cleaning Solutions just had. It is automatic speech-to-text, so fix obvious recognition errors from context.\n\n"""\n${transcript}\n"""\n\nWrite meeting notes for the owner's records in plain text (no markdown symbols). Use these sections, each starting on its own line with the label followed by a colon: Summary (3-6 sentences), Key points, Decisions, Action items (who does what, by when if mentioned), Follow-ups or open questions. Under each section put one item per line starting with "- ". Write "None" where a section is empty. Then add one line starting "Assistant feedback:" with your brief, practical advice for the business based on the meeting.`,
   }], { effort: 'medium', tools: false });
   if (response.stop_reason === 'refusal') throw new Error('The assistant could not summarize this meeting.');
   return saveNote({ kind: 'meeting', title: title || `Meeting ${new Date().toISOString().slice(0, 10)}`, body: textOf(response), transcript });

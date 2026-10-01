@@ -34,11 +34,11 @@
 .ace-face-wrap[data-state="thinking"] .ace-halo { animation: ace-pulse 0.9s ease-in-out infinite; }
 @keyframes ace-pulse { 0%, 100% { transform: scale(.94); opacity: .75; } 50% { transform: scale(1.06); opacity: 1; } }
 
-#head { transform-box: view-box; transform-origin: 200px 330px; }
+#head, #hair-back { transform-box: view-box; transform-origin: 200px 330px; }
 #body { transform-box: view-box; transform-origin: 200px 470px; }
 .ace-lid { transform-box: fill-box; transform-origin: 50% 0; }
 .ace-pupil, #brow-l, #brow-r { transform-box: fill-box; transform-origin: center; }
-.ace-shirt-logo { font-family: var(--font-head); font-weight: 800; font-size: 22px; fill: rgba(255, 255, 255, .55); }
+.ace-shirt-logo { font-family: var(--font-head); font-weight: 800; font-size: 10px; fill: #465a41; }
 
 .ace-state { margin: 6px 0 0; font-family: var(--font-head); font-weight: 700; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ace-mint); }
 .ace-state[data-state="listening"]::before { content: "● "; color: #7fd27f; }
