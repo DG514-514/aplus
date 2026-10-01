@@ -35,7 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Unable to sign in right now.');
-      window.location.assign(form.dataset.redirect || '/portal');
+      // Only same-site paths from an allow-list, so ?next= can't be used to redirect elsewhere.
+      const next = new URLSearchParams(window.location.search).get('next');
+      window.location.assign(next === '/ace' ? next : (form.dataset.redirect || '/portal'));
     } catch (err) {
       alertBox.textContent = err.message;
       alertBox.hidden = false;

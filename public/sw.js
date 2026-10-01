@@ -1,7 +1,7 @@
 /* A+ Cleaning Solutions service worker: fast loading, offline fallback and push notifications. */
 'use strict';
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const STATIC_CACHE = `aplus-static-${VERSION}`;
 const PAGE_CACHE = `aplus-pages-${VERSION}`;
 const PRECACHE = [
@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(fetch(request).catch(async () => (await caches.match('/')) || caches.match('/offline.html')));
       return;
     }
-    const isPrivate = url.pathname.startsWith('/portal') || url.pathname.startsWith('/admin');
+    const isPrivate = url.pathname.startsWith('/portal') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/ace');
     event.respondWith(
       fetch(request)
         .then((response) => {

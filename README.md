@@ -40,6 +40,14 @@ be marked paid by hand (e-transfer, cash) or voided.
 | `STRIPE_WEBHOOK_SECRET` | Optional but recommended: endpoint `https://<domain>/api/stripe/webhook`, event `checkout.session.completed` |
 | `STRIPE_CURRENCY`       | Optional, defaults to `cad`                                                         |
 
+### Ace (voice assistant)
+
+The owner's voice assistant lives at `/ace` (owner login required; installable as its own app). It uses the Claude API for conversation, notes and meeting summaries; speech-to-text and the voice run in the browser (Chrome, Edge or Safari).
+
+| Variable            | Purpose                                                          |
+|---------------------|------------------------------------------------------------------|
+| `ANTHROPIC_API_KEY` | API key from console.anthropic.com. Without it, Ace stays off (notes still work). |
+
 ## Deploying (Render)
 
 `render.yaml` sets everything up: a Node web service on the Starter plan with a 1 GB persistent disk for the

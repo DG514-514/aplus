@@ -627,3 +627,92 @@ test('terms record page escapes what the client typed', async () => {
   assert.ok(!html.includes('<script>alert'));
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 });
+
+test('Ace assistant: owner-only, talks via Claude, saves notes and meeting summaries', async () => {
+  const anon = await post('/api/admin/assistant/chat', { text: 'hi' });
+  assert.equal(anon.status, 401);
+  const page = await fetch(`${base}/ace`, { redirect: 'manual' });
+  assert.equal(page.status, 302);
+  assert.equal(page.headers.get('location'), '/admin?next=/ace');
+
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const cookie = adminLogin.headers.get('set-cookie').split(';')[0];
+  assert.equal((await fetch(`${base}/ace`, { headers: { cookie } })).status, 200);
+
+  // Without an API key the assistant reports it's off, but notes still work.
+  delete process.env.ANTHROPIC_API_KEY;
+  assert.deepEqual(await (await fetch(`${base}/api/admin/assistant/status`, { headers: { cookie } })).json(), { configured: false });
+  assert.equal((await post('/api/admin/assistant/chat', { text: 'hi' }, { cookie })).status, 503);
+
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  const calls = [];
+  const realFetch = global.fetch;
+  const reply = (body) => new Response(JSON.stringify({
+    id: `msg_${calls.length}`, type: 'message', role: 'assistant', model: 'claude-opus-5-5',
+    stop_details: null, usage: { input_tokens: 10, output_tokens: 10 }, ...body,
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+  global.fetch = async (url, opts = {}) => {
+    if (!String(url).startsWith('https://api.anthropic.com')) return realFetch(url, opts);
+    const body = JSON.parse(opts.body);
+    calls.push({ body, headers: opts.headers });
+    const last = body.messages[body.messages.length - 1];
+    if (body.tools && typeof last.content === 'string' && /note/i.test(last.content)) {
+      return reply({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tu_1', name: 'save_note', input: { title: 'Call Casa Nuova', body: 'Confirm insurance certificates by Friday.' } }] });
+    }
+    if (Array.isArray(last.content) && last.content[0].type === 'tool_result') {
+      return reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Got it, noted.' }] });
+    }
+    if (!body.tools) {
+      return reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Summary:\n- Agreed to onboard Casa Nuova.\nAction items:\n- Owner sends agreement.' }] });
+    }
+    return reply({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'We made about $440 this month.' }] });
+  };
+  try {
+    let res = await post('/api/admin/assistant/chat', { text: 'How are we doing this month?' }, { cookie });
+    assert.equal(res.status, 200);
+    const first = await res.json();
+    assert.equal(first.reply, 'We made about $440 this month.');
+    assert.ok(first.conversationId);
+    const req = calls[0].body;
+    assert.equal(req.model, 'claude-opus-5-5');
+    assert.equal(req.fallbacks, 'default');
+    assert.match(req.system[0].text, /You are Ace/);
+    assert.match(req.system[1].text, /Studio Standard Clean: \$110/);
+
+    // Same conversation continues, appending to the history; asking for a note runs the save_note tool.
+    res = await post('/api/admin/assistant/chat', { conversationId: first.conversationId, text: 'Take a note to call Casa Nuova' }, { cookie });
+    const second = await res.json();
+    assert.equal(second.reply, 'Got it, noted.');
+    assert.equal(second.notes[0].title, 'Call Casa Nuova');
+    const followUp = calls[calls.length - 1].body.messages;
+    assert.equal(followUp[0].content, 'How are we doing this month?');
+    assert.equal(followUp[followUp.length - 1].content[0].type, 'tool_result');
+
+    // Meeting mode sends the live transcript along with the question.
+    await post('/api/admin/assistant/chat', { text: 'what did we decide?', meetingTranscript: '[0:05] we should onboard Casa Nuova' }, { cookie });
+    assert.match(calls[calls.length - 1].body.messages[0].content, /Meeting mode[\s\S]*onboard Casa Nuova[\s\S]*what did we decide/);
+
+    // End of meeting: summary saved as a meeting note with the transcript.
+    res = await post('/api/admin/assistant/meeting/summary', { title: 'Casa Nuova kickoff', transcript: '[0:05] we should onboard Casa Nuova and send the agreement' }, { cookie });
+    assert.equal(res.status, 200);
+    const { note } = await res.json();
+    assert.equal(note.kind, 'meeting');
+    assert.match(note.body, /Agreed to onboard/);
+    assert.equal((await post('/api/admin/assistant/meeting/summary', { transcript: '' }, { cookie })).status, 400);
+
+    const { notes } = await (await fetch(`${base}/api/admin/assistant/notes`, { headers: { cookie } })).json();
+    assert.deepEqual(notes.map((n) => n.title).slice(0, 2), ['Casa Nuova kickoff', 'Call Casa Nuova']);
+    const { transcript } = await (await fetch(`${base}/api/admin/assistant/notes/${note.id}/transcript`, { headers: { cookie } })).json();
+    assert.match(transcript, /send the agreement/);
+
+    // Manual notes and deleting.
+    res = await post('/api/admin/assistant/notes', { body: 'Order more microfiber cloths' }, { cookie });
+    assert.equal(res.status, 201);
+    const manual = (await res.json()).note;
+    const del = await fetch(`${base}/api/admin/assistant/notes/${manual.id}`, { method: 'DELETE', headers: { cookie, 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(del.status, 200);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.ANTHROPIC_API_KEY;
+  }
+});
