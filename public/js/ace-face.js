@@ -4,7 +4,7 @@
 // Exposes window.AceFace. Everything is SVG attributes + CSSOM (no inline styles, per the site CSP).
 (() => {
   const $ = (id) => document.getElementById(id);
-  const MOUTH = { cx: 200, cy: 302, halfWidth: 27 };
+  const MOUTH = { cx: 200, cy: 302, halfWidth: 25 };
 
   // Mouth shapes (visemes): open = px the lips part, width = horizontal scale, smile = corner lift.
   const SHAPES = {
@@ -62,7 +62,7 @@
         + `C${cx + w * 0.22} ${cy - 10 - open * 0.25} ${cx + w * 0.6} ${cy - 7 - open * 0.25} ${cx + w} ${corner} `
         + `Q${cx} ${ctrl(upperInner + 0.6, corner)} ${cx - w} ${corner}Z`,
       lower: `M${cx - w} ${corner} Q${cx} ${ctrl(lowerInner - 0.4, corner)} ${cx + w} ${corner} `
-        + `Q${cx} ${ctrl(lowerInner + 9.5 - open * 0.08, corner)} ${cx - w} ${corner}Z`,
+        + `Q${cx} ${ctrl(lowerInner + 11 - open * 0.08, corner)} ${cx - w} ${corner}Z`,
       upperInner, lowerInner, w: wi,
     };
   }
@@ -79,6 +79,11 @@
     teeth.setAttribute('y', String(p.upperInner - 1));
     teeth.setAttribute('height', String(Math.max(0, current.open * 0.32)));
     $('mouth-tongue').setAttribute('cy', String(p.lowerInner + 2));
+    const gloss = $('lip-gloss');
+    if (gloss) {
+      gloss.setAttribute('cy', String(p.lowerInner + 5));
+      gloss.setAttribute('rx', String(p.w * 0.32));
+    }
   }
 
   function frame(now) {
@@ -124,7 +129,10 @@
     if (state === 'listening') rot += 3;
     if (state === 'thinking') rot -= 2;
     if (talking) { y += Math.sin(t * 5.2) * 1.6; rot += Math.sin(t * 2.1) * 1.4; }
-    $('head').style.transform = `translateY(${y}px) rotate(${rot}deg)`;
+    for (const id of ['head', 'hair-back']) {
+      const part = $(id);
+      if (part) part.style.transform = `translateY(${y}px) rotate(${rot}deg)`;
+    }
     $('body').style.transform = `translateY(${Math.sin(t * 1.3) * 0.6}px)`;
 
     // Brows: lift while listening, slight furrow while thinking, lively while talking.

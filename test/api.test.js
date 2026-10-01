@@ -656,7 +656,7 @@ test('Ace assistant: owner-only, talks via Claude, saves notes and meeting summa
     const body = JSON.parse(opts.body);
     calls.push({ body, headers: opts.headers });
     const last = body.messages[body.messages.length - 1];
-    if (body.tools && typeof last.content === 'string' && /note/i.test(last.content)) {
+    if (body.tools && typeof last.content === 'string' && /take a note/i.test(last.content)) {
       return reply({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tu_1', name: 'save_note', input: { title: 'Call Casa Nuova', body: 'Confirm insurance certificates by Friday.' } }] });
     }
     if (Array.isArray(last.content) && last.content[0].type === 'tool_result') {
@@ -677,7 +677,8 @@ test('Ace assistant: owner-only, talks via Claude, saves notes and meeting summa
     assert.equal(req.model, 'claude-opus-5-5');
     assert.equal(req.fallbacks, 'default');
     assert.match(req.system[0].text, /You are Ace/);
-    assert.match(req.system[1].text, /Studio Standard Clean: \$110/);
+    assert.deepEqual(req.cache_control, { type: 'ephemeral' });
+    assert.match(req.messages[0].content, /<business_snapshot>[\s\S]*Studio Standard Clean: \$110[\s\S]*How are we doing this month\?$/);
 
     // Same conversation continues, appending to the history; asking for a note runs the save_note tool.
     res = await post('/api/admin/assistant/chat', { conversationId: first.conversationId, text: 'Take a note to call Casa Nuova' }, { cookie });
@@ -685,7 +686,9 @@ test('Ace assistant: owner-only, talks via Claude, saves notes and meeting summa
     assert.equal(second.reply, 'Got it, noted.');
     assert.equal(second.notes[0].title, 'Call Casa Nuova');
     const followUp = calls[calls.length - 1].body.messages;
-    assert.equal(followUp[0].content, 'How are we doing this month?');
+    assert.equal(followUp[0].content, req.messages[0].content); // history re-sent unchanged (cache-friendly)
+    // The snapshot isn't repeated when nothing changed.
+    assert.equal(followUp[2].content, 'Take a note to call Casa Nuova');
     assert.equal(followUp[followUp.length - 1].content[0].type, 'tool_result');
 
     // Meeting mode sends the live transcript along with the question.

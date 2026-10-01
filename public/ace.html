@@ -38,85 +38,115 @@
         <div class="ace-halo" aria-hidden="true"></div>
         <svg class="ace-face" id="ace-face" viewBox="0 0 400 470" role="img" aria-label="Ace, your A+ colleague">
           <defs>
-            <radialGradient id="skin" cx="50%" cy="42%" r="62%">
-              <stop offset="0" stop-color="#f1c6a6"/>
-              <stop offset=".7" stop-color="#e2a988"/>
-              <stop offset="1" stop-color="#c98b6a"/>
+            <radialGradient id="skin" cx="50%" cy="40%" r="62%">
+              <stop offset="0" stop-color="#f7d6be"/>
+              <stop offset=".65" stop-color="#ebb899"/>
+              <stop offset="1" stop-color="#d49c7c"/>
             </radialGradient>
             <linearGradient id="neck" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#b9785a"/>
-              <stop offset=".45" stop-color="#d79d7d"/>
+              <stop offset="0" stop-color="#c58867"/>
+              <stop offset=".4" stop-color="#e4ad8e"/>
             </linearGradient>
             <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#3b2c25"/>
-              <stop offset="1" stop-color="#1f1714"/>
+              <stop offset="0" stop-color="#6b3d27"/>
+              <stop offset=".55" stop-color="#4a2718"/>
+              <stop offset="1" stop-color="#2c160d"/>
+            </linearGradient>
+            <linearGradient id="hair-dark" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#3c2015"/>
+              <stop offset="1" stop-color="#1f0f08"/>
             </linearGradient>
             <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#8ca283"/>
-              <stop offset="1" stop-color="#5f7458"/>
+              <stop offset="0" stop-color="#6d8466"/>
+              <stop offset="1" stop-color="#465a41"/>
             </linearGradient>
             <radialGradient id="iris" cx="45%" cy="40%" r="60%">
-              <stop offset="0" stop-color="#8a6448"/>
-              <stop offset="1" stop-color="#3f2a1d"/>
+              <stop offset="0" stop-color="#8fa86a"/>
+              <stop offset=".6" stop-color="#5e7440"/>
+              <stop offset="1" stop-color="#2f3b20"/>
             </radialGradient>
-            <clipPath id="clip-eye-l"><ellipse cx="166" cy="222" rx="17" ry="10.5"/></clipPath>
-            <clipPath id="clip-eye-r"><ellipse cx="234" cy="222" rx="17" ry="10.5"/></clipPath>
-            <clipPath id="clip-mouth"><path id="mouth-clip-path" d="M170 300 Q200 300 230 300 Q200 300 170 300Z"/></clipPath>
+            <clipPath id="clip-eye-l"><ellipse cx="165" cy="224" rx="18" ry="10.5"/></clipPath>
+            <clipPath id="clip-eye-r"><ellipse cx="235" cy="224" rx="18" ry="10.5"/></clipPath>
+            <clipPath id="clip-mouth"><path id="mouth-clip-path" d="M176 302 Q200 302 224 302 Q200 302 176 302Z"/></clipPath>
           </defs>
+
+          <!-- Long hair behind the shoulders (moves with the head) -->
+          <g id="hair-back">
+            <path d="M200 76 C128 76 88 128 86 204 C84 262 78 304 62 352 C50 390 56 424 74 452 L326 452 C344 424 350 390 338 352 C322 304 316 262 314 204 C312 128 272 76 200 76Z" fill="url(#hair-dark)"/>
+          </g>
 
           <!-- Body -->
           <g id="body">
-            <path d="M40 470 C48 418 96 392 156 384 L244 384 C304 392 352 418 360 470Z" fill="url(#shirt)"/>
-            <path d="M162 384 L200 432 L238 384 L226 380 L200 414 L174 380Z" fill="#f4f1ea"/>
-            <path d="M174 380 L200 414 L226 380" fill="none" stroke="#dcd6c8" stroke-width="2"/>
-            <text x="290" y="436" class="ace-shirt-logo">A+</text>
-            <path d="M170 318 C170 350 168 370 160 386 C185 402 215 402 240 386 C232 370 230 350 230 318Z" fill="url(#neck)"/>
+            <path d="M28 470 C36 420 90 394 152 386 L248 386 C310 394 364 420 372 470Z" fill="url(#shirt)"/>
+            <path d="M162 386 L200 438 L238 386Z" fill="#f7f1e8"/>
+            <path d="M154 384 L200 446 L186 470 L126 470 C132 438 140 410 154 384Z" fill="#7d9575"/>
+            <path d="M246 384 L200 446 L214 470 L274 470 C268 438 260 410 246 384Z" fill="#7d9575"/>
+            <circle cx="292" cy="430" r="11" fill="#f7f1e8" opacity=".9"/>
+            <text x="292" y="434" class="ace-shirt-logo" text-anchor="middle">A+</text>
+            <path d="M181 316 C181 350 179 372 171 389 C188 403 212 403 229 389 C221 372 219 350 219 316Z" fill="url(#neck)"/>
+            <path d="M176 396 Q188 401 198 399 M202 399 Q212 401 224 396" fill="none" stroke="#c88a6a" stroke-width="1.4" opacity=".5"/>
+            <path d="M180 392 Q200 420 220 392" fill="none" stroke="#d9b56f" stroke-width="1.4"/>
+            <circle cx="200" cy="413" r="3.2" fill="#e6c27a"/>
           </g>
 
           <!-- Head -->
           <g id="head">
-            <path d="M104 214 C92 150 132 92 202 90 C276 90 312 150 296 218 C300 180 290 160 276 148 C246 166 168 168 134 146 C118 160 106 182 104 214Z" fill="url(#hair)"/>
-            <ellipse cx="111" cy="242" rx="15" ry="25" fill="#d59a79"/>
-            <ellipse cx="289" cy="242" rx="15" ry="25" fill="#d59a79"/>
-            <path d="M113 212 C113 146 152 118 200 118 C248 118 287 146 287 212 C287 286 262 340 200 350 C138 340 113 286 113 212Z" fill="url(#skin)"/>
-            <!-- Hair fringe -->
-            <path d="M110 214 C104 150 146 104 204 106 C262 108 296 148 290 214 C284 176 270 156 252 144 C226 160 170 162 140 140 C124 158 114 184 110 214Z" fill="url(#hair)"/>
-            <path d="M140 140 C170 162 226 160 252 144 C238 136 216 128 196 130 C174 132 152 134 140 140Z" fill="#2a1f1a"/>
-            <!-- Cheeks -->
-            <ellipse cx="146" cy="276" rx="20" ry="11" fill="#e07f6a" opacity=".16"/>
-            <ellipse cx="254" cy="276" rx="20" ry="11" fill="#e07f6a" opacity=".16"/>
+            <ellipse cx="200" cy="340" rx="26" ry="7" fill="#b9775a" opacity=".22"/>
+            <path d="M121 214 C121 148 157 118 200 118 C243 118 279 148 279 214 C279 283 254 333 200 346 C146 333 121 283 121 214Z" fill="url(#skin)"/>
+            <!-- Contour, blush, highlights -->
+            <ellipse cx="134" cy="262" rx="8" ry="26" fill="#c7826a" opacity=".09"/>
+            <ellipse cx="266" cy="262" rx="8" ry="26" fill="#c7826a" opacity=".09"/>
+            <ellipse cx="152" cy="270" rx="20" ry="11" fill="#ec8a80" opacity=".24"/>
+            <ellipse cx="248" cy="270" rx="20" ry="11" fill="#ec8a80" opacity=".24"/>
+            <ellipse cx="156" cy="254" rx="12" ry="4.5" fill="#fff" opacity=".16"/>
+            <ellipse cx="244" cy="254" rx="12" ry="4.5" fill="#fff" opacity=".16"/>
+            <path d="M201 212 L201 250" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".07"/>
+            <!-- Eyeshadow -->
+            <ellipse cx="164" cy="213" rx="21" ry="9" fill="#9b6670" opacity=".28"/>
+            <ellipse cx="236" cy="213" rx="21" ry="9" fill="#9b6670" opacity=".28"/>
             <!-- Brows -->
-            <path id="brow-l" d="M144 196 Q164 184 186 192" fill="none" stroke="#2a1f1a" stroke-width="6.5" stroke-linecap="round"/>
-            <path id="brow-r" d="M214 192 Q236 184 256 196" fill="none" stroke="#2a1f1a" stroke-width="6.5" stroke-linecap="round"/>
+            <path id="brow-l" d="M145 201 Q160 187 186 195" fill="none" stroke="#4a2a1c" stroke-width="4.6" stroke-linecap="round"/>
+            <path id="brow-r" d="M214 195 Q240 187 255 201" fill="none" stroke="#4a2a1c" stroke-width="4.6" stroke-linecap="round"/>
             <!-- Eyes -->
             <g clip-path="url(#clip-eye-l)">
-              <ellipse cx="166" cy="222" rx="17" ry="10.5" fill="#fbf8f4"/>
-              <g class="ace-pupil" id="pupil-l"><circle cx="166" cy="222" r="7.8" fill="url(#iris)"/><circle cx="166" cy="222" r="3.6" fill="#120c09"/><circle cx="168.6" cy="219.4" r="1.8" fill="#fff"/></g>
-              <rect class="ace-lid" id="lid-l" x="146" y="210" width="40" height="24" fill="#dca283"/>
+              <ellipse cx="165" cy="224" rx="18" ry="10.5" fill="#fdfaf6"/>
+              <g class="ace-pupil" id="pupil-l"><circle cx="165" cy="224" r="8.6" fill="url(#iris)"/><circle cx="165" cy="224" r="3.8" fill="#120c09"/><circle cx="168" cy="221" r="2" fill="#fff"/><circle cx="162" cy="227.5" r=".9" fill="#fff" opacity=".7"/></g>
+              <rect class="ace-lid" id="lid-l" x="145" y="212" width="42" height="24" fill="#e7b192"/>
             </g>
             <g clip-path="url(#clip-eye-r)">
-              <ellipse cx="234" cy="222" rx="17" ry="10.5" fill="#fbf8f4"/>
-              <g class="ace-pupil" id="pupil-r"><circle cx="234" cy="222" r="7.8" fill="url(#iris)"/><circle cx="234" cy="222" r="3.6" fill="#120c09"/><circle cx="236.6" cy="219.4" r="1.8" fill="#fff"/></g>
-              <rect class="ace-lid" id="lid-r" x="214" y="210" width="40" height="24" fill="#dca283"/>
+              <ellipse cx="235" cy="224" rx="18" ry="10.5" fill="#fdfaf6"/>
+              <g class="ace-pupil" id="pupil-r"><circle cx="235" cy="224" r="8.6" fill="url(#iris)"/><circle cx="235" cy="224" r="3.8" fill="#120c09"/><circle cx="238" cy="221" r="2" fill="#fff"/><circle cx="232" cy="227.5" r=".9" fill="#fff" opacity=".7"/></g>
+              <rect class="ace-lid" id="lid-r" x="213" y="212" width="42" height="24" fill="#e7b192"/>
             </g>
-            <path d="M148 219 Q166 206 184 218" fill="none" stroke="#2a1f1a" stroke-width="2.6" stroke-linecap="round"/>
-            <path d="M216 218 Q234 206 252 219" fill="none" stroke="#2a1f1a" stroke-width="2.6" stroke-linecap="round"/>
-            <path d="M152 236 Q166 240 180 236" fill="none" stroke="#c38a6d" stroke-width="1.5" opacity=".7"/>
-            <path d="M220 236 Q234 240 248 236" fill="none" stroke="#c38a6d" stroke-width="1.5" opacity=".7"/>
+            <!-- Liner, lashes -->
+            <path d="M184 217 Q166 206 147 222 Q143 220 138 214" fill="none" stroke="#1b1110" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M216 217 Q234 206 253 222 Q257 220 262 214" fill="none" stroke="#1b1110" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M149 218 l-4 -3 M153 215 l-3 -4 M158 212 l-2 -4 M164 210.5 l-1 -4 M170 210.5 l0 -3.5" stroke="#1b1110" stroke-width="1.1" stroke-linecap="round"/>
+            <path d="M251 218 l4 -3 M247 215 l3 -4 M242 212 l2 -4 M236 210.5 l1 -4 M230 210.5 l0 -3.5" stroke="#1b1110" stroke-width="1.1" stroke-linecap="round"/>
+            <path d="M150 233 Q165 239 182 232" fill="none" stroke="#6b4636" stroke-width="1.2" opacity=".55"/>
+            <path d="M250 233 Q235 239 218 232" fill="none" stroke="#6b4636" stroke-width="1.2" opacity=".55"/>
             <!-- Nose -->
-            <path d="M201 226 C200 246 194 258 190 266 C196 272 204 272 211 266" fill="none" stroke="#b9775a" stroke-width="3" stroke-linecap="round"/>
-            <ellipse cx="200" cy="268" rx="13" ry="4" fill="#b9775a" opacity=".18"/>
+            <path d="M204 232 C204 248 202 258 198 264" fill="none" stroke="#c08062" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+            <path d="M190 268 Q196 273 200 270 Q204 273 210 268" fill="none" stroke="#b06e52" stroke-width="2" stroke-linecap="round" opacity=".6"/>
+            <ellipse cx="201" cy="262" rx="4" ry="3" fill="#fff" opacity=".25"/>
             <!-- Mouth -->
             <g id="mouth">
-              <path id="mouth-inner" d="" fill="#4a1d1c"/>
+              <path id="mouth-inner" d="" fill="#5a1f22"/>
               <g clip-path="url(#clip-mouth)">
-                <rect id="mouth-teeth" x="176" y="296" width="48" height="6" rx="2" fill="#fbf7ef"/>
-                <ellipse id="mouth-tongue" cx="200" cy="312" rx="13" ry="6" fill="#c45f5c"/>
+                <rect id="mouth-teeth" x="180" y="298" width="40" height="6" rx="2" fill="#fdf9f2"/>
+                <ellipse id="mouth-tongue" cx="200" cy="312" rx="11" ry="5.5" fill="#c45f5c"/>
               </g>
-              <path id="lip-upper" d="" fill="#b8615a"/>
-              <path id="lip-lower" d="" fill="#c46c63"/>
+              <path id="lip-upper" d="" fill="#b8464b"/>
+              <path id="lip-lower" d="" fill="#cc5a5d"/>
+              <ellipse id="lip-gloss" cx="200" cy="309" rx="8" ry="2" fill="#fff" opacity=".35"/>
             </g>
-            <path d="M178 338 Q200 348 222 338" fill="none" stroke="#c38a6d" stroke-width="2" opacity=".35"/>
+            <!-- Front hair: crown, side-swept fringe and face-framing waves -->
+            <path d="M200 92 C148 92 114 128 110 188 C108 232 114 274 110 318 C106 348 96 372 88 394 C104 382 118 362 126 338 C134 298 128 250 132 212 C136 176 152 152 182 142 C214 134 252 146 270 172 C282 192 282 230 280 264 C278 302 286 342 302 372 C308 384 316 394 322 400 C308 368 298 330 296 290 C294 238 302 188 292 154 C280 114 246 92 200 92Z" fill="url(#hair)"/>
+            <path d="M182 142 C160 152 144 172 136 202 C150 174 176 156 214 150 C236 147 258 156 270 172 C252 146 214 134 182 142Z" fill="#3a1e12"/>
+            <path d="M168 104 C140 120 124 158 124 210 M232 104 C266 118 286 152 288 204 M122 262 C120 302 112 342 98 382 M282 262 C284 304 292 344 308 384 M196 96 C176 104 160 120 150 142" fill="none" stroke="#a06a46" stroke-width="2.2" stroke-linecap="round" opacity=".45"/>
+            <!-- Earrings -->
+            <circle cx="122" cy="276" r="5.5" fill="none" stroke="#e1bd73" stroke-width="2.2"/>
+            <circle cx="278" cy="276" r="5.5" fill="none" stroke="#e1bd73" stroke-width="2.2"/>
           </g>
         </svg>
       </div>

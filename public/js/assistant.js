@@ -90,7 +90,10 @@
     voices = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
     const select = $('ace-voice');
     const saved = store.get('ace-voice');
-    const rank = (v) => (/natural|neural|premium|enhanced/i.test(v.name) ? 0 : /google|samantha|aria|jenny|guy|daniel|karen|moira|ava|evan|zoe/i.test(v.name) ? 1 : 2);
+    // Ace has a woman's voice: prefer natural-sounding female voices.
+    const female = /samantha|ava|allison|susan|zoe|karen|moira|tessa|serena|victoria|fiona|aria|jenny|michelle|emma|libby|sonia|natasha|joanna|salli|kendra|kimberly|female|google us english|google uk english female/i;
+    const natural = /natural|neural|premium|enhanced/i;
+    const rank = (v) => (female.test(v.name) ? 0 : 2) + (natural.test(v.name) ? 0 : 1);
     voices.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
     select.replaceChildren(...voices.map((v) => el('option', { value: v.name }, `${v.name.replace(/Microsoft |Google /, '')} (${v.lang})`)));
     if (saved && voices.some((v) => v.name === saved)) select.value = saved;
