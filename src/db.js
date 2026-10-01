@@ -112,6 +112,22 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint   TEXT NOT NULL UNIQUE,
+    keys_json  TEXT NOT NULL,
+    audience   TEXT NOT NULL CHECK (audience IN ('owner', 'client')),
+    client_id  INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // Columns added after launch: add them to existing databases.
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
 if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');

@@ -465,3 +465,64 @@ test('owner can add, edit and delete cleaners with their services and costs', as
   assert.equal(del.status, 200);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM cleaner_services WHERE cleaner_id = ?').get(id).n, 0);
 });
+
+test('push notifications: owner and client devices subscribe and get the right alerts', async () => {
+  const push = require('../src/push');
+  const sent = [];
+  push.setSender(async (subscription, payload) => {
+    if (subscription.endpoint.includes('gone')) { const e = new Error('gone'); e.statusCode = 410; throw e; }
+    sent.push({ endpoint: subscription.endpoint, ...JSON.parse(payload) });
+  });
+  process.env.ADMIN_EMAIL = 'owner@example.com';
+  process.env.ADMIN_PASSWORD = 'owner-secret-1';
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = adminLogin.headers.get('set-cookie').split(';')[0];
+  const sub = (endpoint) => ({ subscription: { endpoint, keys: { p256dh: 'BPk', auth: 'au' } } });
+
+  const { publicKey } = await (await fetch(`${base}/api/admin/push/key`, { headers: { cookie: admin } })).json();
+  assert.match(publicKey, /^[A-Za-z0-9_-]{80,}$/);
+  assert.equal((await fetch(`${base}/api/admin/push/key`)).status, 401);
+  assert.equal((await post('/api/admin/push/subscribe', { subscription: { endpoint: 'http://insecure' } }, { cookie: admin })).status, 400);
+  assert.equal((await post('/api/admin/push/subscribe', sub('https://push.example/owner-phone'), { cookie: admin })).status, 200);
+  assert.equal((await post('/api/admin/push/subscribe', sub('https://push.example/gone-phone'), { cookie: admin })).status, 200);
+
+  // Client device
+  const { cookie: alice } = await login('alice@example.com', 'alicepass1');
+  assert.equal((await post('/api/push/subscribe', sub('https://push.example/alice-phone'), { cookie: alice })).status, 200);
+  assert.equal((await post('/api/push/subscribe', sub('https://push.example/x'))).status, 401);
+
+  // New quote request → owner alerted; dead device cleaned up.
+  await post('/api/inquiries', { name: 'Robin', email: 'robin@example.com', plan: 'Monthly' });
+  await new Promise((r) => setTimeout(r, 50));
+  const quoteAlert = sent.find((m) => m.title === 'New quote request');
+  assert.equal(quoteAlert.endpoint, 'https://push.example/owner-phone');
+  assert.match(quoteAlert.body, /Robin · Monthly/);
+  assert.equal(quoteAlert.url, '/admin#inquiries');
+  assert.ok(!sent.some((m) => m.endpoint.includes('alice')));
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint LIKE '%gone%'").get().n, 0);
+
+  // New invoice → only that client's device alerted.
+  const aliceId = db.prepare("SELECT id FROM clients WHERE email = 'alice@example.com'").get().id;
+  sent.length = 0;
+  await post('/api/admin/invoices', { clientId: aliceId, sendEmail: false, items: [{ description: 'Clean', amount: '60' }] }, { cookie: admin });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].endpoint, 'https://push.example/alice-phone');
+  assert.match(sent[0].body, /\$60\.00/);
+
+  // Manual payment → owner alerted.
+  sent.length = 0;
+  const inv = db.prepare("SELECT id FROM invoices WHERE client_id = ? AND status = 'open' ORDER BY id DESC").get(aliceId);
+  await post(`/api/admin/invoices/${inv.id}/mark-paid`, { method: 'cash' }, { cookie: admin });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(sent.some((m) => m.title.startsWith('Payment received') && m.endpoint.includes('owner-phone')));
+
+  // Service worker and manifests are served for the app.
+  const sw = await fetch(`${base}/sw.js`);
+  assert.equal(sw.status, 200);
+  assert.equal(sw.headers.get('cache-control'), 'no-cache');
+  const manifest = await (await fetch(`${base}/manifest.webmanifest`)).json();
+  assert.equal(manifest.start_url, '/portal?source=app');
+  const ownerManifest = await (await fetch(`${base}/admin.webmanifest`)).json();
+  assert.equal(ownerManifest.start_url, '/admin?source=app');
+});

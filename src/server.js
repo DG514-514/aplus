@@ -8,6 +8,7 @@ const admin = require('./admin');
 const { sendInquiryAlert } = require('./notify');
 const invoices = require('./invoices');
 const stripe = require('./stripe');
+const push = require('./push');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -131,6 +132,22 @@ app.get('/api/orders', auth.requireClientApi, (req, res) => {
   res.json({ orders });
 });
 
+/* ---------- Push notifications (client devices) ---------- */
+
+app.get('/api/push/key', auth.requireClientApi, (_req, res) => res.json({ publicKey: push.publicKey() }));
+
+app.post('/api/push/subscribe', auth.requireClientApi, (req, res) => {
+  const sub = push.readSubscription(req.body);
+  if (!sub) return res.status(400).json({ error: 'Invalid notification subscription.' });
+  push.save(sub, 'client', req.client.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', auth.requireClientApi, (req, res) => {
+  push.remove(req.body?.endpoint);
+  res.json({ ok: true });
+});
+
 /* ---------- Invoices ---------- */
 
 app.get('/api/invoices', auth.requireClientApi, (req, res) => {
@@ -217,6 +234,11 @@ app.post('/api/inquiries', (req, res) => {
 
   // Email alert is best-effort: the request is already saved in the dashboard.
   sendInquiryAlert(inquiry).catch((err) => console.error('Quote request email failed:', err.message));
+  push.notifyOwner({
+    title: 'New quote request',
+    body: [inquiry.name, inquiry.plan, inquiry.residence].filter(Boolean).join(' · '),
+    url: '/admin#inquiries', tag: 'inquiry',
+  }).catch((err) => console.error('Push failed:', err.message));
 });
 
 app.use('/api/admin', admin.router);
@@ -243,6 +265,12 @@ app.get('/portal', (req, res) => {
   if (!req.client) return res.redirect('/login');
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(PUBLIC_DIR, 'portal.html'));
+});
+
+// The service worker must always be re-checked so app updates reach phones quickly.
+app.get('/sw.js', (_req, res) => {
+  res.set({ 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+  res.sendFile(path.join(PUBLIC_DIR, 'sw.js'));
 });
 
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'], index: 'index.html' }));

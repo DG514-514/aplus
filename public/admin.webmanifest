@@ -1,0 +1,17 @@
+{
+  "id": "/admin",
+  "name": "A+ Cleaning — Owner",
+  "short_name": "A+ Owner",
+  "description": "Manage quote requests, invoices, clients and cleaners.",
+  "start_url": "/admin?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3f6f1",
+  "theme_color": "#3c4838",
+  "icons": [
+    { "src": "/icons/owner-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/owner-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/owner-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

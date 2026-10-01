@@ -334,3 +334,15 @@ p { margin: 0 0 1em; }
 .not-found { text-align: center; min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .not-found-logo { height: 70px; width: auto; margin-bottom: 32px; }
 .not-found h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); text-transform: none; }
+
+/* ---------- App (installed) ---------- */
+
+.app-dialog { border: 0; border-radius: var(--radius); padding: 26px; width: min(420px, calc(100% - 32px)); box-shadow: var(--shadow-lg); color: var(--ink); }
+.app-dialog::backdrop { background: rgba(44, 53, 41, .45); }
+.app-dialog h2 { font-size: 1.3rem; margin-bottom: 6px; }
+.app-dialog ol { padding-left: 20px; margin: 12px 0 20px; display: grid; gap: 8px; }
+.app-dialog-reason { color: var(--muted); margin: 0; }
+@media (display-mode: standalone) {
+  .site-header, .portal-header { padding-top: env(safe-area-inset-top); }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}

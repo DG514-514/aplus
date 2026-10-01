@@ -154,3 +154,9 @@
 .badge-paid { background: var(--sage-100); color: var(--sage-700); }
 .invoice-service { background: var(--sage-50); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: .96rem; }
 .invoice-service strong { color: var(--forest); }
+
+/* ---------- App strip ---------- */
+.app-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap;
+  background: #fff; border: 1px dashed var(--sage); border-radius: var(--radius); padding: 14px 20px; margin-bottom: 28px; }
+.app-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.app-status { margin: 12px 0 0; font-size: .92rem; color: var(--muted); }

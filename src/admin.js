@@ -10,6 +10,7 @@ const auth = require('./auth');
 const notify = require('./notify');
 const invoices = require('./invoices');
 const stripe = require('./stripe');
+const push = require('./push');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -268,6 +269,11 @@ router.post('/invoices', async (req, res) => {
       email = err.message;
     }
   }
+  push.notifyClient(client.id, {
+    title: 'New invoice from A+ Cleaning',
+    body: `${invoice.invoice_number} · ${(invoice.amount_cents / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} — tap to view and pay`,
+    url: '/portal', tag: `invoice-${invoice.invoice_number}`,
+  }).catch((err) => console.error('Push failed:', err.message));
   res.status(201).json({ invoiceNumber: invoice.invoice_number, email });
 });
 
@@ -369,6 +375,31 @@ router.delete('/cleaners/:id', (req, res) => {
   const result = db.prepare('DELETE FROM cleaners WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Cleaner not found.' });
   res.json({ ok: true });
+});
+
+/* ---------- Push notifications (owner devices) ---------- */
+
+router.get('/push/key', (_req, res) => {
+  res.json({ publicKey: push.publicKey(), devices: push.ownerDeviceCount() });
+});
+
+router.post('/push/subscribe', (req, res) => {
+  const sub = push.readSubscription(req.body);
+  if (!sub) return res.status(400).json({ error: 'Invalid notification subscription.' });
+  push.save(sub, 'owner');
+  res.json({ ok: true, devices: push.ownerDeviceCount() });
+});
+
+router.post('/push/unsubscribe', (req, res) => {
+  push.remove(req.body?.endpoint);
+  res.json({ ok: true, devices: push.ownerDeviceCount() });
+});
+
+router.post('/push/test', async (_req, res) => {
+  const delivered = await push.notifyOwner({
+    title: 'Notifications are on ✅', body: 'You’ll be alerted about new quote requests and payments.', url: '/admin', tag: 'test',
+  });
+  res.json({ ok: true, delivered });
 });
 
 /* ---------- Email alerts ---------- */

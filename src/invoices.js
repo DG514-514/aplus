@@ -4,6 +4,7 @@
 
 const db = require('./db');
 const notify = require('./notify');
+const push = require('./push');
 
 const logEmailError = (label) => (err) => console.error(`${label} email failed:`, err.message);
 
@@ -71,6 +72,11 @@ function markPaid(invoice, { method, paymentIntent = null, receiptUrl = null }) 
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(updated.client_id);
     notify.sendPaymentAlert({ client, invoice: updated }).catch(logEmailError('Payment alert'));
+    push.notifyOwner({
+      title: 'Payment received 💳',
+      body: `${client.name} paid ${updated.invoice_number} · ${(updated.amount_cents / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })}`,
+      url: '/admin#invoices', tag: `paid-${updated.invoice_number}`,
+    }).catch((err) => console.error('Push failed:', err.message));
   }
   return result.changes > 0;
 }
