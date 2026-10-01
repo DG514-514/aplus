@@ -95,7 +95,7 @@
     const natural = /natural|neural|premium|enhanced/i;
     const rank = (v) => (female.test(v.name) ? 0 : 2) + (natural.test(v.name) ? 0 : 1);
     voices.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-    select.replaceChildren(...voices.map((v) => el('option', { value: v.name }, `${v.name.replace(/Microsoft |Google /, '')} (${v.lang})`)));
+    select.replaceChildren(...voices.map((v) => el('option', { value: v.name }, `${natural.test(v.name) ? '★ ' : ''}${v.name.replace(/Microsoft |Google /, '')} (${v.lang})`)));
     if (saved && voices.some((v) => v.name === saved)) select.value = saved;
   }
 
