@@ -119,3 +119,4 @@ option.add-new { font-weight: 700; }
   .margin-pill { font-size: .75rem; }
 }
 .terms-link { display: block; margin-top: 4px; font-size: .86rem; font-weight: 700; color: var(--sage-700); }
+.ace-tab-link { text-decoration: none; display: inline-flex; align-items: center; color: var(--forest); background: var(--sage-100); }

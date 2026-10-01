@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ace | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#2f3a2c">
+  <link rel="manifest" href="/ace.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/owner-apple-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ace">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/assistant.css">
+  <script src="/js/app.js" defer></script>
+  <script src="/js/ace-face.js" defer></script>
+  <script src="/js/assistant.js" defer></script>
+</head>
+<body class="ace-page">
+  <header class="ace-topbar">
+    <a href="/admin" class="ace-brand"><img src="/img/logo-white.png" alt="A+ Cleaning Solutions" width="800" height="333"></a>
+    <nav class="ace-nav">
+      <a href="/admin" class="ace-navlink">Dashboard</a>
+      <button type="button" class="ace-navlink" data-install hidden>Install App</button>
+      <button type="button" class="ace-navlink" id="ace-signout">Sign Out</button>
+    </nav>
+  </header>
+
+  <main class="ace-layout">
+    <!-- Ace on stage -->
+    <section class="ace-stage" aria-label="Ace">
+      <div class="ace-face-wrap" id="ace-face-wrap" data-state="idle">
+        <div class="ace-halo" aria-hidden="true"></div>
+        <svg class="ace-face" id="ace-face" viewBox="0 0 400 470" role="img" aria-label="Ace, your A+ colleague">
+          <defs>
+            <radialGradient id="skin" cx="50%" cy="42%" r="62%">
+              <stop offset="0" stop-color="#f1c6a6"/>
+              <stop offset=".7" stop-color="#e2a988"/>
+              <stop offset="1" stop-color="#c98b6a"/>
+            </radialGradient>
+            <linearGradient id="neck" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#b9785a"/>
+              <stop offset=".45" stop-color="#d79d7d"/>
+            </linearGradient>
+            <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#3b2c25"/>
+              <stop offset="1" stop-color="#1f1714"/>
+            </linearGradient>
+            <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8ca283"/>
+              <stop offset="1" stop-color="#5f7458"/>
+            </linearGradient>
+            <radialGradient id="iris" cx="45%" cy="40%" r="60%">
+              <stop offset="0" stop-color="#8a6448"/>
+              <stop offset="1" stop-color="#3f2a1d"/>
+            </radialGradient>
+            <clipPath id="clip-eye-l"><ellipse cx="166" cy="222" rx="17" ry="10.5"/></clipPath>
+            <clipPath id="clip-eye-r"><ellipse cx="234" cy="222" rx="17" ry="10.5"/></clipPath>
+            <clipPath id="clip-mouth"><path id="mouth-clip-path" d="M170 300 Q200 300 230 300 Q200 300 170 300Z"/></clipPath>
+          </defs>
+
+          <!-- Body -->
+          <g id="body">
+            <path d="M40 470 C48 418 96 392 156 384 L244 384 C304 392 352 418 360 470Z" fill="url(#shirt)"/>
+            <path d="M162 384 L200 432 L238 384 L226 380 L200 414 L174 380Z" fill="#f4f1ea"/>
+            <path d="M174 380 L200 414 L226 380" fill="none" stroke="#dcd6c8" stroke-width="2"/>
+            <text x="290" y="436" class="ace-shirt-logo">A+</text>
+            <path d="M170 318 C170 350 168 370 160 386 C185 402 215 402 240 386 C232 370 230 350 230 318Z" fill="url(#neck)"/>
+          </g>
+
+          <!-- Head -->
+          <g id="head">
+            <path d="M104 214 C92 150 132 92 202 90 C276 90 312 150 296 218 C300 180 290 160 276 148 C246 166 168 168 134 146 C118 160 106 182 104 214Z" fill="url(#hair)"/>
+            <ellipse cx="111" cy="242" rx="15" ry="25" fill="#d59a79"/>
+            <ellipse cx="289" cy="242" rx="15" ry="25" fill="#d59a79"/>
+            <path d="M113 212 C113 146 152 118 200 118 C248 118 287 146 287 212 C287 286 262 340 200 350 C138 340 113 286 113 212Z" fill="url(#skin)"/>
+            <!-- Hair fringe -->
+            <path d="M110 214 C104 150 146 104 204 106 C262 108 296 148 290 214 C284 176 270 156 252 144 C226 160 170 162 140 140 C124 158 114 184 110 214Z" fill="url(#hair)"/>
+            <path d="M140 140 C170 162 226 160 252 144 C238 136 216 128 196 130 C174 132 152 134 140 140Z" fill="#2a1f1a"/>
+            <!-- Cheeks -->
+            <ellipse cx="146" cy="276" rx="20" ry="11" fill="#e07f6a" opacity=".16"/>
+            <ellipse cx="254" cy="276" rx="20" ry="11" fill="#e07f6a" opacity=".16"/>
+            <!-- Brows -->
+            <path id="brow-l" d="M144 196 Q164 184 186 192" fill="none" stroke="#2a1f1a" stroke-width="6.5" stroke-linecap="round"/>
+            <path id="brow-r" d="M214 192 Q236 184 256 196" fill="none" stroke="#2a1f1a" stroke-width="6.5" stroke-linecap="round"/>
+            <!-- Eyes -->
+            <g clip-path="url(#clip-eye-l)">
+              <ellipse cx="166" cy="222" rx="17" ry="10.5" fill="#fbf8f4"/>
+              <g class="ace-pupil" id="pupil-l"><circle cx="166" cy="222" r="7.8" fill="url(#iris)"/><circle cx="166" cy="222" r="3.6" fill="#120c09"/><circle cx="168.6" cy="219.4" r="1.8" fill="#fff"/></g>
+              <rect class="ace-lid" id="lid-l" x="146" y="210" width="40" height="24" fill="#dca283"/>
+            </g>
+            <g clip-path="url(#clip-eye-r)">
+              <ellipse cx="234" cy="222" rx="17" ry="10.5" fill="#fbf8f4"/>
+              <g class="ace-pupil" id="pupil-r"><circle cx="234" cy="222" r="7.8" fill="url(#iris)"/><circle cx="234" cy="222" r="3.6" fill="#120c09"/><circle cx="236.6" cy="219.4" r="1.8" fill="#fff"/></g>
+              <rect class="ace-lid" id="lid-r" x="214" y="210" width="40" height="24" fill="#dca283"/>
+            </g>
+            <path d="M148 219 Q166 206 184 218" fill="none" stroke="#2a1f1a" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M216 218 Q234 206 252 219" fill="none" stroke="#2a1f1a" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M152 236 Q166 240 180 236" fill="none" stroke="#c38a6d" stroke-width="1.5" opacity=".7"/>
+            <path d="M220 236 Q234 240 248 236" fill="none" stroke="#c38a6d" stroke-width="1.5" opacity=".7"/>
+            <!-- Nose -->
+            <path d="M201 226 C200 246 194 258 190 266 C196 272 204 272 211 266" fill="none" stroke="#b9775a" stroke-width="3" stroke-linecap="round"/>
+            <ellipse cx="200" cy="268" rx="13" ry="4" fill="#b9775a" opacity=".18"/>
+            <!-- Mouth -->
+            <g id="mouth">
+              <path id="mouth-inner" d="" fill="#4a1d1c"/>
+              <g clip-path="url(#clip-mouth)">
+                <rect id="mouth-teeth" x="176" y="296" width="48" height="6" rx="2" fill="#fbf7ef"/>
+                <ellipse id="mouth-tongue" cx="200" cy="312" rx="13" ry="6" fill="#c45f5c"/>
+              </g>
+              <path id="lip-upper" d="" fill="#b8615a"/>
+              <path id="lip-lower" d="" fill="#c46c63"/>
+            </g>
+            <path d="M178 338 Q200 348 222 338" fill="none" stroke="#c38a6d" stroke-width="2" opacity=".35"/>
+          </g>
+        </svg>
+      </div>
+
+      <p class="ace-state" id="ace-state" role="status" aria-live="polite">Getting ready…</p>
+      <p class="ace-caption" id="ace-caption" aria-live="polite"></p>
+      <p class="ace-heard" id="ace-heard"></p>
+
+      <div class="ace-controls">
+        <button type="button" class="ace-mic" id="ace-mic" aria-pressed="false" aria-label="Turn microphone on">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z" fill="currentColor"/></svg>
+        </button>
+        <button type="button" class="ace-round" id="ace-stop-talking" aria-label="Stop Ace talking" hidden>■</button>
+      </div>
+      <p class="ace-mic-label" id="ace-mic-label">Tap the mic and talk to Ace</p>
+
+      <form class="ace-type" id="ace-type-form" autocomplete="off">
+        <input type="text" id="ace-text" placeholder="…or type a message" aria-label="Message to Ace" maxlength="4000">
+        <button type="submit" class="btn btn-primary btn-sm">Send</button>
+      </form>
+    </section>
+
+    <!-- Side panel -->
+    <section class="ace-side">
+      <div class="ace-tabs" role="tablist" aria-label="Ace">
+        <button type="button" role="tab" class="ace-tab" aria-selected="true" data-panel="talk">Conversation</button>
+        <button type="button" role="tab" class="ace-tab" aria-selected="false" data-panel="meeting">Meeting</button>
+        <button type="button" role="tab" class="ace-tab" aria-selected="false" data-panel="notes">Notes <span class="ace-count" id="ace-notes-count"></span></button>
+      </div>
+
+      <div class="ace-panel" id="panel-talk">
+        <div class="ace-log" id="ace-log">
+          <p class="ace-hint">Talk to Ace like a coworker — ask how the business is doing, bounce ideas around, get feedback, or say “Ace, take a note…”. Ace answers out loud and keeps listening until you turn the mic off.</p>
+        </div>
+        <div class="ace-options">
+          <label><input type="checkbox" id="ace-speak" checked> Speak out loud</label>
+          <label class="ace-voice-pick">Voice <select id="ace-voice" aria-label="Ace's voice"></select></label>
+          <button type="button" class="link-btn" id="ace-new">New conversation</button>
+        </div>
+      </div>
+
+      <div class="ace-panel" id="panel-meeting" hidden>
+        <div id="ace-meeting-setup">
+          <label class="field"><span>Meeting name <span class="optional">(optional)</span></span>
+            <input type="text" id="ace-meeting-title" maxlength="160" placeholder="e.g. Casa Nuova kickoff"></label>
+          <button type="button" class="btn btn-primary" id="ace-meeting-start">Start Meeting</button>
+          <p class="muted ace-small">Put your phone or laptop in the middle of the table. Ace writes a live transcript and stays quiet until someone says <strong>“Hey Ace”</strong> followed by a question. When you end the meeting, Ace writes up the summary, decisions and action items and saves them to Notes.</p>
+        </div>
+        <div id="ace-meeting-live" hidden>
+          <div class="ace-live-bar">
+            <span class="ace-rec" id="ace-rec">● Recording</span>
+            <span class="ace-timer" id="ace-timer">0:00</span>
+            <button type="button" class="btn btn-outline btn-sm" id="ace-meeting-pause">Pause</button>
+            <button type="button" class="btn btn-primary btn-sm" id="ace-meeting-end">End &amp; Summarize</button>
+          </div>
+          <div class="ace-transcript" id="ace-transcript"></div>
+          <p class="ace-interim" id="ace-meeting-interim"></p>
+          <form class="ace-type" id="ace-ask-form" autocomplete="off">
+            <input type="text" id="ace-ask" placeholder="Ask Ace quietly (answer appears here)…" aria-label="Question for Ace" maxlength="4000">
+            <button type="submit" class="btn btn-outline btn-sm">Ask</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="ace-panel" id="panel-notes" hidden>
+        <form class="ace-type" id="ace-note-form" autocomplete="off">
+          <input type="text" id="ace-note-text" placeholder="Jot a quick note…" aria-label="New note" maxlength="20000">
+          <button type="submit" class="btn btn-outline btn-sm">Save</button>
+        </form>
+        <input type="search" class="ace-search" id="ace-notes-search" placeholder="Search notes" aria-label="Search notes">
+        <div class="ace-notes" id="ace-notes"></div>
+        <p class="ace-empty" id="ace-notes-empty" hidden>No notes yet. Ask Ace to “take a note”, or run a meeting.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

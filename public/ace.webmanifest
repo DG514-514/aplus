@@ -1,0 +1,16 @@
+{
+  "id": "/ace",
+  "name": "Ace — A+ Business Assistant",
+  "short_name": "Ace",
+  "description": "Talk to Ace, your A+ colleague: feedback, notes and meeting write-ups.",
+  "start_url": "/ace?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#232b21",
+  "theme_color": "#2f3a2c",
+  "icons": [
+    { "src": "/icons/owner-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/owner-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/owner-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

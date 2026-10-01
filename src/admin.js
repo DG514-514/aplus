@@ -12,6 +12,7 @@ const invoices = require('./invoices');
 const stripe = require('./stripe');
 const push = require('./push');
 const terms = require('./terms');
+const assistant = require('./assistant');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -88,6 +89,9 @@ router.post('/logout', (req, res) => {
 });
 
 router.use(requireAdmin);
+
+// Ace, the owner's voice assistant.
+router.use('/assistant', assistant.router);
 
 router.get('/overview', (_req, res) => {
   const clients = db.prepare(`
