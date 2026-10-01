@@ -346,3 +346,5 @@ p { margin: 0 0 1em; }
   .site-header, .portal-header { padding-top: env(safe-area-inset-top); }
   body { padding-bottom: env(safe-area-inset-bottom); }
 }
+.footer-install { background: none; border: 0; padding: 0; font: inherit; color: #e3eadf; cursor: pointer; }
+.footer-install:hover { color: #fff; text-decoration: underline; }

@@ -1,7 +1,7 @@
 /* A+ Cleaning Solutions service worker: fast loading, offline fallback and push notifications. */
 'use strict';
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const STATIC_CACHE = `aplus-static-${VERSION}`;
 const PAGE_CACHE = `aplus-pages-${VERSION}`;
 const PRECACHE = [
@@ -39,6 +39,11 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     // Pages: always try the network first so content is fresh; fall back offline.
+    // /app redirects to the portal or the homepage, so it's never cached itself.
+    if (url.pathname === '/app') {
+      event.respondWith(fetch(request).catch(async () => (await caches.match('/')) || caches.match('/offline.html')));
+      return;
+    }
     const isPrivate = url.pathname.startsWith('/portal') || url.pathname.startsWith('/admin');
     event.respondWith(
       fetch(request)
