@@ -125,3 +125,9 @@
 @media (prefers-reduced-motion: reduce) {
   .ace-halo, .ace-mic.is-on { animation: none !important; }
 }
+
+.ace-voice-help { font-size: .86rem; color: var(--ace-dim); background: rgba(0, 0, 0, .15); border-radius: 10px; padding: 8px 12px; }
+.ace-voice-help summary { cursor: pointer; font-weight: 700; color: var(--ace-mint); }
+.ace-voice-help p { margin: 8px 0 4px; }
+.ace-voice-help ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; line-height: 1.45; }
+.ace-voice-help strong { color: var(--ace-text); }
