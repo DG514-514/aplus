@@ -19,7 +19,8 @@
   },
   "homepage": "https://github.com/DG514-514/aplus#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "web-push": "^3.6.7"
   },
   "private": true,
   "engines": {

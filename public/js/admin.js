@@ -812,6 +812,42 @@ function renderCleaners() {
   }
 }
 
+/* ---------- Phone app & notifications ---------- */
+
+async function refreshPushUI() {
+  const on = await window.APlusApp.pushEnabled().catch(() => false);
+  $('push-toggle').textContent = on ? '🔕 Turn Off Notifications' : '🔔 Turn On Notifications';
+  $('push-toggle').className = `btn btn-sm ${on ? 'btn-outline' : 'btn-primary'}`;
+  $('push-test').hidden = !on;
+  try {
+    const { devices } = await api('/push/key');
+    $('push-status').textContent = on
+      ? `✅ This device gets alerts for new quote requests and payments. (${devices} device${devices === 1 ? '' : 's'} signed up)`
+      : devices
+        ? `${devices} other device${devices === 1 ? '' : 's'} signed up for alerts. Turn them on here too if you like.`
+        : 'Tip: on iPhone, install the app first (Share → Add to Home Screen), then turn notifications on from the app.';
+  } catch { /* status is optional */ }
+}
+
+async function togglePush() {
+  const btn = $('push-toggle');
+  btn.disabled = true;
+  try {
+    if (await window.APlusApp.pushEnabled()) {
+      await window.APlusApp.disablePush('owner');
+      toast('Notifications turned off on this device.');
+    } else {
+      const result = await window.APlusApp.enablePush('owner');
+      if (result?.ok !== false) toast('Notifications are on for this device.');
+    }
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    refreshPushUI();
+  }
+}
+
 /* ---------- Email alerts ---------- */
 
 async function loadEmailStatus() {
@@ -865,6 +901,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('order-search').addEventListener('input', renderOrders);
   $('client-search').addEventListener('input', renderClients);
   $('email-test-btn').addEventListener('click', sendTestEmail);
+  $('push-toggle').addEventListener('click', togglePush);
+  $('push-test').addEventListener('click', async () => {
+    try {
+      const { delivered } = await api('/push/test', 'POST');
+      toast(delivered ? 'Test notification sent — check your phone.' : 'No devices are signed up yet.');
+    } catch (err) { toast(err.message); }
+  });
+  refreshPushUI();
+  // Deep links from notifications, e.g. /admin#invoices
+  const startView = location.hash.slice(1);
+  if (['orders', 'clients', 'invoices', 'cleaners', 'inquiries'].includes(startView)) showView(startView);
   $('invoice-form').addEventListener('submit', submitInvoice);
   for (const select of [$('o-client'), $('i-client')]) {
     select.addEventListener('change', () => {

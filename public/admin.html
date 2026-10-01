@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Owner Dashboard | A+ Cleaning Solutions</title>
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#3c4838">
+  <link rel="manifest" href="/admin.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/owner-apple-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="A+ Owner">
   <link rel="icon" type="image/png" href="/img/icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +19,7 @@
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/css/portal.css">
   <link rel="stylesheet" href="/css/admin.css">
+  <script src="/js/app.js" defer></script>
   <script src="/js/admin.js" defer></script>
 </head>
 <body class="portal-page">
@@ -288,6 +296,19 @@
 
     <!-- Inquiries -->
     <section class="view" id="view-inquiries" hidden>
+      <div class="panel app-panel">
+        <div class="panel-head">
+          <h2>Phone app &amp; notifications</h2>
+        </div>
+        <p class="muted">Get the owner dashboard as an app on your phone, and a notification the moment a quote request or payment comes in.</p>
+        <div class="app-actions">
+          <button type="button" class="btn btn-outline btn-sm" data-install hidden>📱 Install App</button>
+          <span class="chip" data-installed hidden>✓ Running as an app</span>
+          <button type="button" class="btn btn-primary btn-sm" id="push-toggle">🔔 Turn On Notifications</button>
+          <button type="button" class="btn btn-outline btn-sm" id="push-test" hidden>Send Test Notification</button>
+        </div>
+        <p class="app-status" id="push-status"></p>
+      </div>
       <div class="panel email-panel">
         <div class="panel-head">
           <h2>Email alerts</h2>

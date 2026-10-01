@@ -288,7 +288,34 @@ async function handlePaymentReturn() {
   }
 }
 
+/* ---------- App & invoice alerts ---------- */
+
+async function setupAppStrip() {
+  const app = window.APlusApp;
+  if (!app) return;
+  const strip = document.getElementById('app-strip');
+  const btn = document.getElementById('client-push');
+  const render = async () => {
+    const on = await app.pushEnabled().catch(() => false);
+    btn.textContent = on ? '✓ Invoice alerts on' : '🔔 Notify Me About Invoices';
+    btn.disabled = on;
+    btn.className = `btn btn-sm ${on ? 'btn-outline' : 'btn-primary'}`;
+    strip.hidden = on && app.isStandalone();
+  };
+  btn.addEventListener('click', async () => {
+    try {
+      const result = await app.enablePush('client');
+      if (result?.ok !== false) showPayNotice('success', 'You’ll get a notification on this device when a new invoice arrives.');
+    } catch (err) {
+      showPayNotice('error', err.message);
+    }
+    render();
+  });
+  render();
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  setupAppStrip();
   setupTabs();
   setupLogout();
   setupPasswordForm();
