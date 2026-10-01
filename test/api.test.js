@@ -522,7 +522,12 @@ test('push notifications: owner and client devices subscribe and get the right a
   assert.equal(sw.status, 200);
   assert.equal(sw.headers.get('cache-control'), 'no-cache');
   const manifest = await (await fetch(`${base}/manifest.webmanifest`)).json();
-  assert.equal(manifest.start_url, '/portal?source=app');
+  assert.equal(manifest.start_url, '/app');
+  // The client app opens the portal for signed-in clients and the website for everyone else.
+  const visitor = await fetch(`${base}/app`, { redirect: 'manual' });
+  assert.equal(visitor.headers.get('location'), '/');
+  const member = await fetch(`${base}/app`, { redirect: 'manual', headers: { cookie: alice } });
+  assert.equal(member.headers.get('location'), '/portal');
   const ownerManifest = await (await fetch(`${base}/admin.webmanifest`)).json();
   assert.equal(ownerManifest.start_url, '/admin?source=app');
 });

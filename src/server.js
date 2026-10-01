@@ -261,6 +261,12 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
 });
 
+// App home-screen entry: signed-in clients go to their portal, everyone else to the website.
+app.get('/app', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.redirect(req.client ? '/portal' : '/');
+});
+
 app.get('/portal', (req, res) => {
   if (!req.client) return res.redirect('/login');
   res.set('Cache-Control', 'no-store');
