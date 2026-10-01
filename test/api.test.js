@@ -33,10 +33,19 @@ const post = (url, body, headers = {}) => fetch(base + url, {
   redirect: 'manual',
 });
 
-async function login(email, password) {
+// Signs a client in and (like a real first sign-in) agrees to the Terms & Conditions.
+async function login(email, password, { acceptTerms = true } = {}) {
   const res = await post('/api/login', { email, password });
-  const cookie = res.headers.get('set-cookie');
-  return { res, cookie: cookie && cookie.split(';')[0] };
+  const raw = res.headers.get('set-cookie');
+  const cookie = raw && raw.split(';')[0];
+  if (cookie && acceptTerms) {
+    const { terms } = await (await fetch(`${base}/api/me`, { headers: { cookie } })).json();
+    if (!terms.accepted) {
+      const { version } = await (await fetch(`${base}/api/terms`)).json();
+      await post('/api/terms/accept', { signedName: email, agree: true, version }, { cookie });
+    }
+  }
+  return { res, cookie };
 }
 
 test.before(async () => {
@@ -530,4 +539,91 @@ test('push notifications: owner and client devices subscribe and get the right a
   assert.equal(member.headers.get('location'), '/portal');
   const ownerManifest = await (await fetch(`${base}/admin.webmanifest`)).json();
   assert.equal(ownerManifest.start_url, '/admin?source=app');
+});
+
+test('terms & conditions: client must sign once before their account opens', async () => {
+  const { hashPassword } = require('../src/auth');
+  db.prepare('INSERT INTO clients (email, name, password_hash) VALUES (?, ?, ?)')
+    .run('terry@example.com', 'Terry Nguyen', hashPassword('terrypass1'));
+  const { cookie } = await login('terry@example.com', 'terrypass1', { acceptTerms: false });
+
+  let me = await (await fetch(`${base}/api/me`, { headers: { cookie } })).json();
+  assert.equal(me.terms.accepted, false);
+  // Account data is locked until signed.
+  const locked = await fetch(`${base}/api/orders`, { headers: { cookie } });
+  assert.equal(locked.status, 403);
+  assert.equal((await locked.json()).code, 'terms_required');
+  assert.equal((await fetch(`${base}/api/invoices`, { headers: { cookie } })).status, 403);
+
+  const t = await (await fetch(`${base}/api/terms`)).json();
+  assert.equal(t.sections.length, 16);
+  assert.equal(t.sections[0].heading, '1. Scope of Services');
+
+  // Name and agreement are required; stale versions are refused.
+  assert.equal((await post('/api/terms/accept', { signedName: '', agree: true, version: t.version }, { cookie })).status, 400);
+  assert.equal((await post('/api/terms/accept', { signedName: 'Terry Nguyen', agree: false, version: t.version }, { cookie })).status, 400);
+  assert.equal((await post('/api/terms/accept', { signedName: 'Terry Nguyen', agree: true, version: 'old' }, { cookie })).status, 409);
+  assert.equal((await post('/api/terms/accept', { signedName: 'Terry Nguyen', agree: true, version: t.version })).status, 401);
+
+  const ok = await post('/api/terms/accept', { signedName: '  Terry   Nguyen ', agree: true, version: t.version }, { cookie, 'User-Agent': 'TestPhone/1.0' });
+  assert.equal(ok.status, 200);
+  me = await (await fetch(`${base}/api/me`, { headers: { cookie } })).json();
+  assert.equal(me.terms.accepted, true);
+  assert.equal((await fetch(`${base}/api/orders`, { headers: { cookie } })).status, 200);
+
+  // One time only: agreeing again (e.g. from another device) doesn't create a second record.
+  await post('/api/terms/accept', { signedName: 'Terry Nguyen', agree: true, version: t.version }, { cookie });
+  const rows = db.prepare("SELECT * FROM terms_acceptances WHERE client_email = 'terry@example.com'").all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].signed_name, 'Terry Nguyen');
+  assert.equal(rows[0].user_agent, 'TestPhone/1.0');
+  assert.match(rows[0].terms_text, /1\. Scope of Services/);
+  assert.match(rows[0].terms_text, /16\. Acceptance of Terms/);
+  assert.match(rows[0].terms_hash, /^[0-9a-f]{64}$/);
+
+  // A later sign-in is not asked again.
+  const { cookie: again } = await login('terry@example.com', 'terrypass1', { acceptTerms: false });
+  me = await (await fetch(`${base}/api/me`, { headers: { cookie: again } })).json();
+  assert.equal(me.terms.accepted, true);
+
+  // Public copy of the terms.
+  const pub = await fetch(`${base}/terms`);
+  assert.equal(pub.status, 200);
+  assert.match(await pub.text(), /16\. Acceptance of Terms/);
+
+  // Owner can see who signed and open the signed copy; nobody else can.
+  const recordUrl = `${base}/admin/agreements/${rows[0].id}`;
+  const anon = await fetch(recordUrl, { redirect: 'manual' });
+  assert.equal(anon.status, 302);
+  assert.equal((await fetch(recordUrl, { redirect: 'manual', headers: { cookie } })).status, 302);
+
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = adminLogin.headers.get('set-cookie').split(';')[0];
+  const { clients } = await (await fetch(`${base}/api/admin/overview`, { headers: { cookie: admin } })).json();
+  const terry = clients.find((c) => c.email === 'terry@example.com');
+  assert.equal(terry.terms_id, rows[0].id);
+  assert.equal(terry.terms_signed_name, 'Terry Nguyen');
+  assert.equal(terry.terms_current, 1);
+
+  const { agreements } = await (await fetch(`${base}/api/admin/agreements`, { headers: { cookie: admin } })).json();
+  assert.ok(agreements.some((a) => a.id === rows[0].id && a.signed_name === 'Terry Nguyen'));
+  assert.equal((await fetch(`${base}/api/admin/agreements`, { headers: { cookie } })).status, 401);
+
+  const record = await fetch(recordUrl, { headers: { cookie: admin } });
+  assert.equal(record.status, 200);
+  const html = await record.text();
+  assert.match(html, /Terry Nguyen/);
+  assert.match(html, /TestPhone\/1\.0/);
+  assert.match(html, /16\. Acceptance of Terms/);
+  assert.equal((await fetch(`${base}/admin/agreements/999999`, { headers: { cookie: admin } })).status, 404);
+});
+
+test('terms record page escapes what the client typed', async () => {
+  const terms = require('../src/terms');
+  const id = terms.accept({ id: 999, name: 'X', email: 'x@example.com' }, '<script>alert(1)</script>', { ip: '1.2.3.4', userAgent: '<b>' });
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = adminLogin.headers.get('set-cookie').split(';')[0];
+  const html = await (await fetch(`${base}/admin/agreements/${id}`, { headers: { cookie: admin } })).text();
+  assert.ok(!html.includes('<script>alert'));
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 });

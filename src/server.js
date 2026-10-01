@@ -9,6 +9,8 @@ const { sendInquiryAlert } = require('./notify');
 const invoices = require('./invoices');
 const stripe = require('./stripe');
 const push = require('./push');
+const terms = require('./terms');
+const termsPages = require('./terms-pages');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -101,8 +103,33 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/me', auth.requireClientApi, (req, res) => {
-  res.json({ client: req.client });
+  res.json({ client: req.client, terms: { accepted: terms.hasAccepted(req.client.id), version: terms.version } });
 });
+
+/* ---------- Terms & Conditions ---------- */
+
+app.get('/api/terms', (_req, res) => res.json(terms.current()));
+
+app.post('/api/terms/accept', auth.requireClientApi, (req, res) => {
+  const signedName = str(req.body?.signedName, 120).replace(/\s+/g, ' ');
+  if (signedName.length < 2) return res.status(400).json({ error: 'Type your full name to sign.' });
+  if (req.body?.agree !== true) return res.status(400).json({ error: 'Tick the box to confirm you agree.' });
+  if (req.body?.version !== terms.version) {
+    return res.status(409).json({ error: 'The terms were just updated. Please review the latest version.' });
+  }
+  if (!terms.hasAccepted(req.client.id)) {
+    terms.accept(req.client, signedName, { ip: req.ip, userAgent: req.get('user-agent') });
+  }
+  res.json({ ok: true });
+});
+
+// Client data stays locked until the current Terms & Conditions are accepted.
+function requireTerms(req, res, next) {
+  if (!terms.hasAccepted(req.client.id)) {
+    return res.status(403).json({ error: 'Please review and accept the Terms & Conditions first.', code: 'terms_required' });
+  }
+  next();
+}
 
 app.post('/api/password', auth.requireClientApi, (req, res) => {
   const current = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
@@ -123,7 +150,7 @@ app.post('/api/password', auth.requireClientApi, (req, res) => {
 
 /* ---------- Orders ---------- */
 
-app.get('/api/orders', auth.requireClientApi, (req, res) => {
+app.get('/api/orders', auth.requireClientApi, requireTerms, (req, res) => {
   const orders = db.prepare(`
     SELECT order_number, service_date, service_type, plan, location, status, amount_cents, notes
     FROM orders WHERE client_id = ?
@@ -150,11 +177,11 @@ app.post('/api/push/unsubscribe', auth.requireClientApi, (req, res) => {
 
 /* ---------- Invoices ---------- */
 
-app.get('/api/invoices', auth.requireClientApi, (req, res) => {
+app.get('/api/invoices', auth.requireClientApi, requireTerms, (req, res) => {
   res.json({ invoices: invoices.listForClient(req.client.id), payments: stripe.status().configured });
 });
 
-app.post('/api/invoices/:number/pay', auth.requireClientApi, async (req, res) => {
+app.post('/api/invoices/:number/pay', auth.requireClientApi, requireTerms, async (req, res) => {
   const invoice = invoices.findByNumber(req.params.number);
   if (!invoice || invoice.client_id !== req.client.id || invoice.status === 'void') {
     return res.status(404).json({ error: 'Invoice not found.' });
@@ -190,7 +217,7 @@ app.post('/api/invoices/:number/pay', auth.requireClientApi, async (req, res) =>
 });
 
 // Called when the client returns from Stripe, so the invoice shows as paid immediately.
-app.post('/api/invoices/confirm', auth.requireClientApi, async (req, res) => {
+app.post('/api/invoices/confirm', auth.requireClientApi, requireTerms, async (req, res) => {
   const sessionId = str(req.body?.sessionId, 200);
   if (!sessionId) return res.status(400).json({ error: 'Missing payment reference.' });
   try {
@@ -255,6 +282,17 @@ app.get('/admin', (req, res) => {
 });
 
 app.get(['/login.html', '/portal.html', '/admin.html', '/admin-login.html'], (req, res) => res.redirect(301, req.path.replace(/(-login)?\.html$/, '')));
+
+app.get('/terms', (_req, res) => res.type('html').send(termsPages.publicPage()));
+
+// Printable copy of a client's signed Terms & Conditions — owner only.
+app.get('/admin/agreements/:id', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!admin.isAdmin(req)) return res.redirect('/admin');
+  const record = terms.getRecord(Number(req.params.id));
+  if (!record) return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
+  res.type('html').send(termsPages.recordPage(record));
+});
 
 app.get('/login', (req, res) => {
   if (req.client) return res.redirect('/portal');

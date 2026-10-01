@@ -11,6 +11,7 @@ const notify = require('./notify');
 const invoices = require('./invoices');
 const stripe = require('./stripe');
 const push = require('./push');
+const terms = require('./terms');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -91,9 +92,13 @@ router.use(requireAdmin);
 router.get('/overview', (_req, res) => {
   const clients = db.prepare(`
     SELECT c.id, c.email, c.name, c.phone, c.residence, c.room, c.created_at,
-           (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id) AS order_count
-    FROM clients c ORDER BY c.name COLLATE NOCASE
-  `).all();
+           (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id) AS order_count,
+           t.id AS terms_id, t.signed_name AS terms_signed_name, t.accepted_at AS terms_accepted_at,
+           t.terms_version = ? AS terms_current
+    FROM clients c
+    LEFT JOIN terms_acceptances t ON t.id = (SELECT MAX(id) FROM terms_acceptances WHERE client_id = c.id)
+    ORDER BY c.name COLLATE NOCASE
+  `).all(terms.version);
   const orders = db.prepare(`
     SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_type,
            o.plan, o.location, o.status, o.amount_cents, o.notes
@@ -102,6 +107,19 @@ router.get('/overview', (_req, res) => {
   `).all();
   const inquiries = db.prepare('SELECT * FROM inquiries ORDER BY id DESC').all();
   res.json({ clients, orders, inquiries, invoices: invoices.listAll(), cleaners: listCleaners(), payments: stripe.status() });
+});
+
+/* ---------- Signed Terms & Conditions ---------- */
+
+// Every acceptance ever recorded, newest first (kept even if the client is later deleted).
+router.get('/agreements', (_req, res) => {
+  res.json({
+    version: terms.version,
+    agreements: db.prepare(`
+      SELECT id, client_id, client_name, client_email, signed_name, terms_version, accepted_at, ip
+      FROM terms_acceptances ORDER BY id DESC
+    `).all(),
+  });
 });
 
 /* ---------- Clients ---------- */

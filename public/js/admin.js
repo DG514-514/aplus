@@ -255,6 +255,7 @@ function renderClients() {
       el('td', { 'data-label': 'Residence' }, [c.residence, c.room && `Rm ${c.room}`].filter(Boolean).join(', ') || '—'),
       el('td', { 'data-label': 'Phone' }, c.phone || '—'),
       el('td', { 'data-label': 'Orders', class: 'num' }, String(c.order_count)),
+      el('td', { 'data-label': 'Terms' }, termsCell(c)),
       el('td', {}, el('div', { class: 'row-actions' },
         el('button', { type: 'button', class: 'link-btn', onclick: () => newOrderFor(c) }, 'Add Order'),
         el('button', { type: 'button', class: 'link-btn', onclick: () => openInvoiceFor(c) }, 'Invoice'),
@@ -262,6 +263,15 @@ function renderClients() {
         el('button', { type: 'button', class: 'link-btn', onclick: () => resetPassword(c) }, 'Reset Password'),
         el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteClient(c) }, 'Delete')))));
   }
+}
+
+// Signed Terms & Conditions status, with a link to the printable signed copy.
+function termsCell(c) {
+  if (!c.terms_id) return el('span', { class: 'badge badge-scheduled', title: 'Asked to agree at their first sign-in' }, 'Not signed yet');
+  const signed = new Date(`${c.terms_accepted_at.replace(' ', 'T')}Z`).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+  return el('div', {},
+    el('span', { class: `badge ${c.terms_current ? 'badge-completed' : 'badge-scheduled'}` }, c.terms_current ? `✓ Signed ${signed}` : 'Old version — re-sign pending'),
+    el('a', { class: 'terms-link', href: `/admin/agreements/${c.terms_id}`, target: '_blank', rel: 'noopener' }, 'View signed copy'));
 }
 
 function generatePassword() {

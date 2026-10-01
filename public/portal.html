@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/css/portal.css">
+  <link rel="stylesheet" href="/css/terms.css">
   <script src="/js/app.js" defer></script>
   <script src="/js/portal.js" defer></script>
 </head>
@@ -147,6 +148,27 @@
 
   <footer class="portal-footer container">
     Questions about an order? Email <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>
+    · <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a>
   </footer>
+
+  <dialog class="terms-dialog" id="terms-dialog" aria-labelledby="terms-title" aria-describedby="terms-intro">
+    <div class="terms-dialog-head">
+      <h2 id="terms-title">Welcome! One last step to open your account</h2>
+      <p id="terms-intro">Please read our Terms &amp; Conditions of Service, then type your full name and click Agree. You only need to do this once.</p>
+    </div>
+    <div class="terms-body" id="terms-body" tabindex="0" aria-label="Terms and Conditions"></div>
+    <form class="terms-dialog-form" id="terms-form" novalidate>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field">
+        <label for="terms-name">Type your full name to sign</label>
+        <input id="terms-name" name="signedName" type="text" autocomplete="name" maxlength="120" required>
+      </div>
+      <label class="check"><input type="checkbox" name="agree" id="terms-agree" required> I have read and agree to the A+ Cleaning Solutions Terms &amp; Conditions of Service.</label>
+      <div class="terms-dialog-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="terms-signout">Sign Out</button>
+        <button type="submit" class="btn btn-primary" id="terms-submit" disabled>Agree</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

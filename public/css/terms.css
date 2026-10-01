@@ -1,0 +1,64 @@
+/* Terms & Conditions: public page, signed agreement record, and the client sign-up pop-up. */
+
+.terms-page { background: var(--cream); }
+.terms-header { background: var(--white); border-bottom: 1px solid var(--line); padding: 14px 0; }
+.terms-header .brand img { height: 44px; width: auto; }
+.terms-main { max-width: 820px; padding-top: 36px; padding-bottom: 60px; }
+.terms-main h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); margin: 4px 0 8px; }
+.terms-main .eyebrow { font-family: var(--font-head); font-weight: 700; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--sage); margin: 0; }
+.terms-main .muted { color: var(--muted); }
+
+.terms-body { background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(18px, 4vw, 36px); margin: 24px 0; box-shadow: var(--shadow); }
+.terms-body section + section { margin-top: 20px; }
+.terms-body h2, .terms-body h3 { font-size: 1.05rem; margin: 0 0 6px; color: var(--forest); }
+.terms-body p { margin: 0 0 8px; line-height: 1.6; }
+.terms-body ul { margin: 0 0 8px; padding-left: 22px; line-height: 1.6; }
+
+.record-bar { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+.record-meta { display: grid; gap: 0; margin: 20px 0; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.record-meta div { display: grid; grid-template-columns: minmax(130px, 220px) 1fr; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.record-meta div:last-child { border-bottom: 0; }
+.record-meta dt { font-weight: 700; color: var(--muted); }
+.record-meta dd { margin: 0; overflow-wrap: anywhere; }
+.signature { display: grid; gap: 4px; padding: 18px 20px; border: 2px dashed var(--sage); border-radius: var(--radius); background: var(--white); }
+.signature-name { font-family: 'Brush Script MT', 'Segoe Script', cursive; font-size: 2rem; color: var(--forest); }
+.signature-note { font-size: .88rem; color: var(--muted); }
+.record-copy-title { font-size: 1.1rem; margin: 28px 0 10px; }
+.record-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: .92rem; line-height: 1.55; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin: 0; }
+
+@media (max-width: 560px) {
+  .record-meta div { grid-template-columns: 1fr; gap: 2px; }
+}
+
+@media print {
+  .no-print, .terms-header { display: none; }
+  .terms-page { background: #fff; }
+  .terms-main { padding: 0; max-width: none; }
+  .record-meta, .record-text, .signature, .terms-body { box-shadow: none; }
+}
+
+/* ---------- Client portal pop-up ---------- */
+
+.terms-dialog { border: 0; border-radius: var(--radius); padding: 0; width: min(720px, calc(100% - 24px)); max-height: calc(100dvh - 24px); box-shadow: var(--shadow-lg); color: var(--ink); }
+.terms-dialog[open] { display: flex; flex-direction: column; }
+.terms-dialog::backdrop { background: rgba(44, 53, 41, .6); }
+.terms-dialog-head { padding: 22px 24px 12px; border-bottom: 1px solid var(--line); }
+.terms-dialog-head h2 { font-size: 1.3rem; margin: 0 0 4px; }
+.terms-dialog-head p { margin: 0; color: var(--muted); font-size: .95rem; }
+.terms-dialog .terms-body { flex: 1 1 auto; min-height: 120px; overflow-y: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; padding: 18px 24px; background: var(--cream); font-size: .93rem; }
+.terms-dialog-form { padding: 16px 24px 22px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.terms-dialog-form .field { margin: 0; }
+.terms-dialog-form .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; line-height: 1.4; cursor: pointer; }
+.terms-dialog-form .check input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--forest); }
+.terms-dialog-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.terms-dialog-actions .btn-primary { min-width: 160px; }
+.terms-scroll-hint { font-size: .85rem; color: var(--muted); margin: 0; }
+
+@media (max-width: 560px) {
+  .terms-dialog-head { padding: 16px 18px 10px; }
+  .terms-dialog-head h2 { font-size: 1.1rem; }
+  .terms-dialog-head p { font-size: .86rem; }
+  .terms-dialog .terms-body { padding: 14px 18px; font-size: .88rem; }
+  .terms-dialog-form { padding: 12px 18px 16px; gap: 10px; }
+  .terms-dialog-form .check { font-size: .9rem; }
+}

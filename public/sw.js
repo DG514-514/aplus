@@ -1,7 +1,7 @@
 /* A+ Cleaning Solutions service worker: fast loading, offline fallback and push notifications. */
 'use strict';
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const STATIC_CACHE = `aplus-static-${VERSION}`;
 const PAGE_CACHE = `aplus-pages-${VERSION}`;
 const PRECACHE = [
@@ -9,6 +9,7 @@ const PRECACHE = [
   '/css/site.css',
   '/css/portal.css',
   '/css/admin.css',
+  '/css/terms.css',
   '/js/main.js',
   '/js/portal.js',
   '/js/admin.js',

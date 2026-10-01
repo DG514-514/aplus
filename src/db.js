@@ -128,6 +128,25 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  -- Signed Terms & Conditions. Kept as permanent records (with a full copy of the text agreed to),
+  -- so there is deliberately no foreign key cascade from clients.
+  CREATE TABLE IF NOT EXISTS terms_acceptances (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id     INTEGER NOT NULL,
+    client_name   TEXT NOT NULL,
+    client_email  TEXT NOT NULL,
+    signed_name   TEXT NOT NULL,
+    terms_version TEXT NOT NULL,
+    terms_hash    TEXT NOT NULL,
+    terms_text    TEXT NOT NULL,
+    ip            TEXT,
+    user_agent    TEXT,
+    accepted_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_terms_client ON terms_acceptances(client_id, accepted_at);
+`);
+
 // Columns added after launch: add them to existing databases.
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
 if (!hasColumn('inquiries', 'invoice_number')) db.exec('ALTER TABLE inquiries ADD COLUMN invoice_number TEXT');
