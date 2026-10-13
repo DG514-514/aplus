@@ -58,7 +58,9 @@ function formError(form, message) {
 async function refresh() {
   Object.assign(state, await api('/overview'));
   $('count-orders').textContent = state.orders.length || '';
-  $('count-clients').textContent = state.clients.length || '';
+  const pendingCount = state.clients.filter((c) => c.status === 'pending').length;
+  $('count-clients').textContent = pendingCount ? `${pendingCount} new` : (state.clients.length || '');
+  $('count-clients').classList.toggle('count-alert', pendingCount > 0);
   $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number && !i.declined_at).length || '';
   $('count-cleaners').textContent = state.cleaners.filter((c) => c.active).length || '';
   $('count-invoices').textContent = state.invoices.filter((i) => i.status === 'open').length || '';
@@ -241,9 +243,50 @@ async function submitOrder(e) {
 
 /* ---------- Clients ---------- */
 
+/* ---------- Account requests from the website ---------- */
+
+function renderPending() {
+  const pending = state.clients.filter((c) => c.status === 'pending');
+  $('pending-panel').hidden = pending.length === 0;
+  $('pending-count').textContent = pending.length || '';
+  const list = $('pending-list');
+  list.replaceChildren();
+  for (const c of pending) {
+    const when = new Date(`${c.created_at.replace(' ', 'T')}Z`).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const place = [c.residence, c.room && `Unit ${c.room}`].filter(Boolean).join(', ');
+    const size = [c.bedrooms && (c.bedrooms === 'Studio' ? 'Studio' : `${c.bedrooms} bed`), c.bathrooms && `${c.bathrooms} bath`].filter(Boolean).join(' · ');
+    const approve = el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => approveAccount(c, e.currentTarget) }, 'Approve');
+    list.append(el('article', { class: 'inquiry pending-card' },
+      el('div', { class: 'inquiry-head' }, el('strong', {}, c.name), el('span', { class: 'sub' }, `Requested ${when}`)),
+      el('p', {}, el('a', { href: `mailto:${c.email}` }, c.email), c.phone ? ` · ${c.phone}` : ''),
+      place ? el('p', {}, `🏠 ${place}`) : null,
+      size ? el('p', { class: 'sub' }, size) : null,
+      c.signup_note ? el('p', { class: 'inquiry-msg' }, c.signup_note) : null,
+      el('div', { class: 'row-actions' },
+        approve,
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => openDeclineDialog(c, 'account') }, 'Decline'))));
+  }
+}
+
+async function approveAccount(c, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Approving…';
+  try {
+    const result = await api(`/clients/${c.id}/approve`, 'POST');
+    await refresh();
+    if (result.emailed) toast(`${c.name} approved and emailed — they can sign in now.`);
+    else alert(`${c.name} is approved and can sign in now, but the email didn’t send${result.emailError ? `:\n\n${result.emailError}` : '.'}\n\nLet them know directly.`);
+  } catch (err) {
+    toast(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Approve';
+  }
+}
+
 function renderClients() {
   const q = $('client-search').value.trim().toLowerCase();
-  const rows = state.clients.filter((c) => !q
+  renderPending();
+  const rows = state.clients.filter((c) => c.status !== 'pending').filter((c) => !q
     || [c.name, c.email, c.residence, c.room, c.phone].join(' ').toLowerCase().includes(q));
   const tbody = $('clients-body');
   tbody.replaceChildren();
@@ -416,13 +459,20 @@ function inquiryActions(inq) {
 
 let decliningInquiry = null;
 
-function openDeclineDialog(inq) {
-  decliningInquiry = inq;
+// Declines either a website quote request ('inquiry') or a website account request ('account').
+let declineKind = 'inquiry';
+function openDeclineDialog(item, kind = 'inquiry') {
+  decliningInquiry = item;
+  declineKind = kind;
   const form = $('decline-form');
   form.reset();
   formError(form, '');
   $('dc-email').checked = true;
-  $('dc-who').textContent = `${inq.name} · ${inq.email}`;
+  $('dc-title').textContent = kind === 'account' ? 'Decline account request' : 'Decline quote request';
+  $('dc-preview').textContent = kind === 'account'
+    ? '“Thank you for signing up with A+ Cleaning Solutions. Unfortunately, we’re unable to open an account for you at this time.”'
+    : '“Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.”';
+  $('dc-who').textContent = `${item.name} · ${item.email}`;
   $('decline-dialog').showModal();
   $('dc-reason').focus();
 }
@@ -444,6 +494,21 @@ async function submitDecline(e) {
   const inq = decliningInquiry;
   const btn = $('dc-submit');
   btn.disabled = true;
+  if (declineKind === 'account') {
+    try {
+      const result = await api(`/clients/${inq.id}/decline`, 'POST', { reason, sendEmail });
+      closeDeclineDialog();
+      await refresh();
+      if (!sendEmail) toast(`${inq.name}’s account request was declined.`);
+      else if (result.emailed) toast(`Declined — ${inq.name} has been emailed.`);
+      else alert(`The account request was declined, but the email didn’t send:\n\n${result.emailError || 'Unknown error'}`);
+    } catch (err) {
+      formError(form, err.message);
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
   try {
     const { email } = await api(`/inquiries/${inq.id}/decline`, 'POST', { reason, sendEmail });
     closeDeclineDialog();

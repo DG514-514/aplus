@@ -288,6 +288,7 @@ p { margin: 0 0 1em; }
 .alert[hidden] { display: none; }
 .alert-error { background: var(--danger-bg); color: var(--danger); }
 .alert-success { background: var(--sage-100); color: var(--sage-700); }
+.alert-info { background: var(--amber-bg); color: var(--amber); }
 
 .contact-grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 56px; }
 .contact-card { background: #fff; border-radius: 20px; padding: 36px; box-shadow: var(--shadow); border: 1px solid var(--line); }

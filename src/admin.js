@@ -96,6 +96,7 @@ router.use('/assistant', assistant.router);
 router.get('/overview', (_req, res) => {
   const clients = db.prepare(`
     SELECT c.id, c.email, c.name, c.phone, c.residence, c.room, c.created_at,
+           c.status, c.bedrooms, c.bathrooms, c.signup_note, c.approved_at,
            (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id) AS order_count,
            t.id AS terms_id, t.signed_name AS terms_signed_name, t.accepted_at AS terms_accepted_at,
            t.terms_version = ? AS terms_current
@@ -151,6 +152,28 @@ router.post('/clients', (req, res) => {
     INSERT INTO clients (email, name, password_hash, phone, residence, room) VALUES (?, ?, ?, ?, ?, ?)
   `).run(client.email, client.name, auth.hashPassword(client.password), client.phone, client.residence, client.room);
   res.status(201).json({ id: Number(lastInsertRowid) });
+});
+
+// Website sign-ups wait here until the owner approves or declines them.
+router.post('/clients/:id/approve', (req, res) => {
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(req.params.id));
+  if (!client) return res.status(404).json({ error: 'Client not found.' });
+  if (client.status === 'active') return res.json({ ok: true, emailed: false });
+  db.prepare("UPDATE clients SET status = 'active', approved_at = datetime('now') WHERE id = ?").run(client.id);
+  notify.sendAccountApprovedEmail(client)
+    .then(() => res.json({ ok: true, emailed: true }))
+    .catch((err) => res.json({ ok: true, emailed: false, emailError: err.message }));
+});
+
+router.post('/clients/:id/decline', (req, res) => {
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(req.params.id));
+  if (!client) return res.status(404).json({ error: 'Client not found.' });
+  if (client.status !== 'pending') return res.status(409).json({ error: 'Only accounts waiting for approval can be declined.' });
+  db.prepare('DELETE FROM clients WHERE id = ?').run(client.id);
+  if (req.body?.sendEmail !== true) return res.json({ ok: true, emailed: false });
+  notify.sendAccountDeclinedEmail(client, str(req.body?.reason, 2000))
+    .then(() => res.json({ ok: true, emailed: true }))
+    .catch((err) => res.json({ ok: true, emailed: false, emailError: err.message }));
 });
 
 router.patch('/clients/:id', (req, res) => {

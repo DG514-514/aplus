@@ -5,7 +5,8 @@ const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
 const admin = require('./admin');
-const { sendInquiryAlert } = require('./notify');
+const notify = require('./notify');
+const { sendInquiryAlert } = notify;
 const invoices = require('./invoices');
 const stripe = require('./stripe');
 const push = require('./push');
@@ -86,16 +87,69 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Enter your email and password.' });
   }
 
-  const client = db.prepare('SELECT id, password_hash FROM clients WHERE email = ?').get(email);
+  const client = db.prepare('SELECT id, password_hash, status FROM clients WHERE email = ?').get(email);
   const ok = auth.verifyPassword(password, client ? client.password_hash : auth.DUMMY_HASH);
   if (!client || !ok) {
     return res.status(401).json({ error: 'That email and password combination doesn’t match our records.' });
+  }
+  if (client.status !== 'active') {
+    return res.status(403).json({
+      code: 'pending_approval',
+      error: 'Thanks for signing up! Your account is waiting for approval. We’ll email you as soon as it’s ready.',
+    });
   }
 
   auth.clearLoginAttempts(limiterKey);
   auth.purgeExpiredSessions();
   auth.setSessionCookie(res, auth.createSession(client.id));
   res.json({ ok: true });
+});
+
+// Website sign-up: creates the account as 'pending' until the owner approves it in the dashboard.
+const SIGNUP_BEDROOMS = ['Studio', '1', '2', '3', '4', '5', '6+'];
+const SIGNUP_BATHROOMS = ['1', '1.5', '2', '2.5', '3', '3.5', '4+'];
+
+app.post('/api/signup', (req, res) => {
+  if (auth.loginRateLimited(`signup:${req.ip}`)) {
+    return res.status(429).json({ error: 'Too many sign-up attempts. Please wait 15 minutes and try again.' });
+  }
+  const b = req.body || {};
+  const client = {
+    name: str(b.name, 120).replace(/\s+/g, ' '),
+    email: str(b.email, 254).toLowerCase(),
+    phone: str(b.phone, 40),
+    residence: str(b.residence, 160),
+    room: str(b.room, 40) || null,
+    bedrooms: SIGNUP_BEDROOMS.includes(b.bedrooms) ? b.bedrooms : null,
+    bathrooms: SIGNUP_BATHROOMS.includes(b.bathrooms) ? b.bathrooms : null,
+    note: str(b.note, 1000) || null,
+  };
+  const password = typeof b.password === 'string' ? b.password : '';
+  if (client.name.length < 2) return res.status(400).json({ error: 'Enter your full name.' });
+  if (!EMAIL_RE.test(client.email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (client.phone.replace(/\D/g, '').length < 7) return res.status(400).json({ error: 'Enter a phone number we can reach you at.' });
+  if (!client.residence) return res.status(400).json({ error: 'Enter your residence or street address.' });
+  if (!client.bedrooms || !client.bathrooms) return res.status(400).json({ error: 'Choose the number of bedrooms and bathrooms.' });
+  if (password.length < 8) return res.status(400).json({ error: 'Choose a password of at least 8 characters.' });
+  if (db.prepare('SELECT 1 FROM clients WHERE email = ?').get(client.email)) {
+    return res.status(409).json({ error: 'An account with that email already exists. Try signing in, or email us if you need help.' });
+  }
+
+  const { lastInsertRowid } = db.prepare(`
+    INSERT INTO clients (email, name, password_hash, phone, residence, room, bedrooms, bathrooms, signup_note, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+  `).run(client.email, client.name, auth.hashPassword(password), client.phone, client.residence, client.room,
+    client.bedrooms, client.bathrooms, client.note);
+  res.status(201).json({ ok: true, status: 'pending' });
+
+  // Alerts are best-effort: the request is already waiting in the dashboard.
+  const saved = { ...client, id: Number(lastInsertRowid) };
+  notify.sendSignupAlert(saved).catch((err) => console.error('Sign-up email failed:', err.message));
+  push.notifyOwner({
+    title: 'New account request',
+    body: [client.name, client.residence].filter(Boolean).join(' · '),
+    url: '/admin#clients', tag: 'signup',
+  }).catch((err) => console.error('Push failed:', err.message));
 });
 
 app.post('/api/logout', (req, res) => {
@@ -283,7 +337,7 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, admin.isAdmin(req) ? 'admin.html' : 'admin-login.html'));
 });
 
-app.get(['/login.html', '/portal.html', '/admin.html', '/admin-login.html'], (req, res) => res.redirect(301, req.path.replace(/(-login)?\.html$/, '')));
+app.get(['/login.html', '/signup.html', '/portal.html', '/admin.html', '/admin-login.html'], (req, res) => res.redirect(301, req.path.replace(/(-login)?\.html$/, '')));
 
 // Ace, the owner's voice assistant, as its own page (and installable app).
 app.get('/ace', (req, res) => {
@@ -301,6 +355,11 @@ app.get('/admin/agreements/:id', (req, res) => {
   const record = terms.getRecord(Number(req.params.id));
   if (!record) return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
   res.type('html').send(termsPages.recordPage(record));
+});
+
+app.get('/signup', (req, res) => {
+  if (req.client) return res.redirect('/portal');
+  res.sendFile(path.join(PUBLIC_DIR, 'signup.html'));
 });
 
 app.get('/login', (req, res) => {
