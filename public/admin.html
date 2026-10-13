@@ -124,6 +124,14 @@
 
     <!-- Clients -->
     <section class="view" id="view-clients" hidden>
+      <div class="panel pending-panel" id="pending-panel" hidden>
+        <div class="panel-head">
+          <h2>Waiting for approval <span class="count" id="pending-count"></span></h2>
+        </div>
+        <p class="muted pending-intro">These people created an account on the website. They can’t sign in until you approve them; approving emails them that their account is ready.</p>
+        <div class="inquiries" id="pending-list"></div>
+      </div>
+
       <div class="panel">
         <div class="panel-head">
           <h2 id="client-form-title">Add a client login</h2>
@@ -340,7 +348,7 @@
       </div>
       <div class="full email-preview">
         <strong>The customer will receive:</strong>
-        <p>“Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.”</p>
+        <p id="dc-preview">“Thank you for your interest in A+ Cleaning Solutions. Unfortunately, we’re unable to take on your cleaning request at this time.”</p>
         <p class="muted">…followed by your reason, and an invitation to reply with any questions.</p>
       </div>
       <label class="check full"><input type="checkbox" id="dc-email" checked> Email the reason to the customer</label>

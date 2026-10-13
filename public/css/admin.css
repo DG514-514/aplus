@@ -120,3 +120,7 @@ option.add-new { font-weight: 700; }
 }
 .terms-link { display: block; margin-top: 4px; font-size: .86rem; font-weight: 700; color: var(--sage-700); }
 .ace-tab-link { text-decoration: none; display: inline-flex; align-items: center; color: var(--forest); background: var(--sage-100); }
+.pending-panel { border: 2px solid var(--amber-bg); }
+.pending-intro { margin: -4px 0 14px; }
+.pending-card .row-actions { gap: 10px; }
+.count.count-alert { background: var(--amber-bg); color: var(--amber); }

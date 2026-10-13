@@ -64,7 +64,7 @@ function getSessionClient(req) {
   const row = db.prepare(`
     SELECT c.id, c.email, c.name, c.phone, c.residence, c.room, c.created_at, s.expires_at
     FROM sessions s JOIN clients c ON c.id = s.client_id
-    WHERE s.token_hash = ?
+    WHERE s.token_hash = ? AND c.status = 'active'
   `).get(sha256(token));
   if (!row || row.expires_at < Date.now()) return null;
   delete row.expires_at;

@@ -236,6 +236,61 @@ function sendPaymentAlert({ client, invoice }) {
   }));
 }
 
+// Owner alert: someone created an account on the website and is waiting for approval.
+function sendSignupAlert(client) {
+  const site = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  const rows = [
+    ['Name', client.name], ['Email', client.email], ['Phone', client.phone],
+    ['Residence', [client.residence, client.room && `Unit/Room ${client.room}`].filter(Boolean).join(', ')],
+    ['Bedrooms', client.bedrooms], ['Bathrooms', client.bathrooms], ['Notes', client.note],
+  ].filter(([, v]) => v);
+  const text = ['New account request on the website — approve or decline it in your dashboard.', '',
+    ...rows.map(([k, v]) => `${k}: ${v}`), '', site ? `Review: ${site}/admin#clients` : ''].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      <p><strong>New account request</strong> — approve or decline it in your dashboard.</p>
+      <table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#66705f">${escapeHtml(k)}</td><td style="padding:4px 0">${escapeHtml(v)}</td></tr>`).join('')}</table>
+      ${site ? `<p><a href="${escapeHtml(site)}/admin#clients" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Review in dashboard</a></p>` : ''}
+    </div>`;
+  return track(sendEmail({ replyTo: client.email, subject: `New account request: ${client.name}`, text, html }));
+}
+
+// Client email once the owner approves their account.
+function sendAccountApprovedEmail(client) {
+  const site = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  const first = client.name.split(' ')[0];
+  const login = site ? `${site}/login` : 'our website';
+  const text = [`Hi ${first},`, '', 'Good news — your A+ Cleaning Solutions account has been approved.', '',
+    `Sign in with the email and password you chose: ${login}`, '',
+    'From your account you can see upcoming visits, your order history and pay invoices online.', '',
+    'Welcome aboard!', 'A+ Cleaning Solutions'].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      <p>Hi ${escapeHtml(first)},</p>
+      <p>Good news — your A+ Cleaning Solutions account has been <strong>approved</strong>.</p>
+      <p>Sign in with the email and password you chose to see upcoming visits, your order history and pay invoices online.</p>
+      ${site ? `<p><a href="${escapeHtml(login)}" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Sign in</a></p>` : ''}
+      <p style="color:#66705f">Welcome aboard!<br>A+ Cleaning Solutions</p>
+    </div>`;
+  return track(sendEmail({ to: [client.email], replyTo: config().to[0], subject: 'Your A+ Cleaning Solutions account is approved', text, html }));
+}
+
+// Client email when the owner declines an account request.
+function sendAccountDeclinedEmail(client, reason) {
+  const first = client.name.split(' ')[0];
+  const text = [`Hi ${first},`, '', 'Thank you for signing up with A+ Cleaning Solutions. Unfortunately, we’re unable to open an account for you at this time.',
+    ...(reason ? ['', reason] : []), '', 'If you have any questions, just reply to this email.', '', 'Best regards,', 'A+ Cleaning Solutions'].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      <p>Hi ${escapeHtml(first)},</p>
+      <p>Thank you for signing up with A+ Cleaning Solutions. Unfortunately, we’re unable to open an account for you at this time.</p>
+      ${reason ? `<p style="background:#f3f6f1;padding:12px 16px;border-radius:8px;white-space:pre-wrap">${escapeHtml(reason)}</p>` : ''}
+      <p>If you have any questions, just reply to this email.</p>
+      <p style="color:#66705f">Best regards,<br>A+ Cleaning Solutions</p>
+    </div>`;
+  return track(sendEmail({ to: [client.email], replyTo: config().to[0], subject: 'Your A+ Cleaning Solutions account request', text, html }));
+}
+
 function emailStatus() {
   const { apiKey, to, from } = config();
   return { keySet: Boolean(apiKey), to, from, last: { ...lastResult } };
@@ -243,4 +298,5 @@ function emailStatus() {
 
 module.exports = {
   sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, sendDeclineEmail, emailStatus, buildInquiryEmail, formatService,
+  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail,
 };

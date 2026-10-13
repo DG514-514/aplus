@@ -719,3 +719,79 @@ test('Ace assistant: owner-only, talks via Claude, saves notes and meeting summa
     delete process.env.ANTHROPIC_API_KEY;
   }
 });
+
+test('website sign-up: account waits for owner approval before the client can sign in', async () => {
+  const sent = [];
+  const realFetch = global.fetch;
+  process.env.RESEND_API_KEY = 'test-resend';
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) {
+      sent.push(JSON.parse(opts.body));
+      return new Response(JSON.stringify({ id: 'em_1' }), { status: 200 });
+    }
+    return realFetch(url, opts);
+  };
+  try {
+    const good = { name: 'Maya  Lopez', email: 'Maya@Example.com', phone: '(305) 555-0101', residence: 'Brickell Lofts',
+      room: '12B', bedrooms: '2', bathrooms: '2', password: 'mayapass1', note: 'Prefer Fridays' };
+
+    // Validation
+    assert.equal((await post('/api/signup', { ...good, phone: '12' })).status, 400);
+    assert.equal((await post('/api/signup', { ...good, bedrooms: '9' })).status, 400);
+    assert.equal((await post('/api/signup', { ...good, password: 'short' })).status, 400);
+    assert.equal((await post('/api/signup', { ...good, residence: '' })).status, 400);
+
+    const res = await post('/api/signup', good);
+    assert.equal(res.status, 201);
+    assert.equal((await res.json()).status, 'pending');
+    const row = db.prepare("SELECT * FROM clients WHERE email = 'maya@example.com'").get();
+    assert.equal(row.status, 'pending');
+    assert.equal(row.name, 'Maya Lopez');
+    assert.equal(row.bedrooms, '2');
+    assert.equal(row.signup_note, 'Prefer Fridays');
+    assert.equal((await post('/api/signup', good)).status, 409);
+
+    // Owner was emailed about the request.
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(sent.some((m) => /New account request: Maya Lopez/.test(m.subject)));
+
+    // Can't sign in yet — right password gets a friendly "pending" notice, wrong password the usual error.
+    let login = await post('/api/login', { email: 'maya@example.com', password: 'mayapass1' });
+    assert.equal(login.status, 403);
+    assert.equal((await login.json()).code, 'pending_approval');
+    assert.equal(login.headers.get('set-cookie'), null);
+    assert.equal((await post('/api/login', { email: 'maya@example.com', password: 'wrongpass1' })).status, 401);
+
+    // Owner sees it in the dashboard and approves → client is emailed and can sign in.
+    const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+    const admin = adminLogin.headers.get('set-cookie').split(';')[0];
+    const { clients } = await (await fetch(`${base}/api/admin/overview`, { headers: { cookie: admin } })).json();
+    const pending = clients.find((c) => c.email === 'maya@example.com');
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.bathrooms, '2');
+    assert.equal((await post(`/api/admin/clients/${pending.id}/approve`, {})).status, 401);
+    const approve = await post(`/api/admin/clients/${pending.id}/approve`, {}, { cookie: admin });
+    assert.deepEqual(await approve.json(), { ok: true, emailed: true });
+    assert.ok(sent.some((m) => m.to[0] === 'maya@example.com' && /approved/.test(m.subject)));
+    assert.equal((await post(`/api/admin/clients/${pending.id}/decline`, {}, { cookie: admin })).status, 409);
+    login = await post('/api/login', { email: 'maya@example.com', password: 'mayapass1' });
+    assert.equal(login.status, 200);
+
+    // A second request gets declined with an email; the record is removed.
+    await post('/api/signup', { ...good, email: 'nope@example.com', name: 'No Pe' });
+    const nope = db.prepare("SELECT id FROM clients WHERE email = 'nope@example.com'").get();
+    const decline = await post(`/api/admin/clients/${nope.id}/decline`, { sendEmail: true, reason: 'We don’t serve that area yet.' }, { cookie: admin });
+    assert.deepEqual(await decline.json(), { ok: true, emailed: true });
+    assert.equal(db.prepare("SELECT 1 FROM clients WHERE email = 'nope@example.com'").get(), undefined);
+    assert.ok(sent.some((m) => m.to[0] === 'nope@example.com' && m.text.includes('serve that area')));
+
+    // Pages
+    const page = await fetch(`${base}/signup`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Create your account/);
+    assert.match(await (await fetch(`${base}/login`)).text(), /href="\/signup"/);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+});

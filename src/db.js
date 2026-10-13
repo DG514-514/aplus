@@ -156,6 +156,12 @@ if (!hasColumn('inquiries', 'declined_at')) db.exec('ALTER TABLE inquiries ADD C
 if (!hasColumn('inquiries', 'decline_reason')) db.exec('ALTER TABLE inquiries ADD COLUMN decline_reason TEXT');
 if (!hasColumn('invoices', 'service_date')) db.exec('ALTER TABLE invoices ADD COLUMN service_date TEXT');
 if (!hasColumn('invoices', 'service_time')) db.exec('ALTER TABLE invoices ADD COLUMN service_time TEXT');
+// Self sign-up: accounts created on the website wait for the owner's approval ('pending' → 'active').
+if (!hasColumn('clients', 'status')) db.exec("ALTER TABLE clients ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+if (!hasColumn('clients', 'bedrooms')) db.exec('ALTER TABLE clients ADD COLUMN bedrooms TEXT');
+if (!hasColumn('clients', 'bathrooms')) db.exec('ALTER TABLE clients ADD COLUMN bathrooms TEXT');
+if (!hasColumn('clients', 'signup_note')) db.exec('ALTER TABLE clients ADD COLUMN signup_note TEXT');
+if (!hasColumn('clients', 'approved_at')) db.exec('ALTER TABLE clients ADD COLUMN approved_at TEXT');
 
 // Order numbers follow the autoincrement sequence, so they are never reused even after deletes.
 db.nextOrderNumber = () => {

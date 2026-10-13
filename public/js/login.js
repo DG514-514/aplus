@@ -34,15 +34,20 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ email, password: password.value }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || 'Unable to sign in right now.');
+      if (!res.ok) throw Object.assign(new Error(body.error || 'Unable to sign in right now.'), { code: body.code });
       // Only same-site paths from an allow-list, so ?next= can't be used to redirect elsewhere.
       const next = new URLSearchParams(window.location.search).get('next');
       window.location.assign(next === '/ace' ? next : (form.dataset.redirect || '/portal'));
     } catch (err) {
+      // A correct sign-in to an account still waiting for approval is a notice, not an error.
+      const pending = err.code === 'pending_approval';
+      alertBox.className = `alert ${pending ? 'alert-info' : 'alert-error'}`;
       alertBox.textContent = err.message;
       alertBox.hidden = false;
-      password.value = '';
-      password.focus();
+      if (!pending) {
+        password.value = '';
+        password.focus();
+      }
       submit.disabled = false;
       submit.textContent = 'Sign In';
     }

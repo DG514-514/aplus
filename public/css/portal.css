@@ -19,6 +19,14 @@
   background: none; border: 0; cursor: pointer; font: inherit; font-size: .85rem; font-weight: 700; color: var(--sage-700); padding: 6px 8px;
 }
 .auth-help { font-size: .92rem; color: var(--muted); margin-top: 24px; }
+.auth-signup { display: grid; gap: 10px; margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: .95rem; }
+.auth-wide { grid-template-columns: minmax(360px, 660px) 1fr; }
+.auth-wide .auth-form-wrap { max-width: 540px; }
+#signup-form .alert { grid-column: 1 / -1; margin: 0; }
+#signup-form textarea { min-height: 84px; }
+.auth-fine { font-size: .85rem; color: var(--muted); margin: 0; }
+.auth-done-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--sage-100); color: var(--sage-700); display: grid; place-items: center; font-size: 1.6rem; font-weight: 800; margin-bottom: 16px; }
+#signup-done .btn { align-self: flex-start; }
 .auth-back { color: var(--muted); text-decoration: none; font-size: .92rem; }
 .auth-back:hover { color: var(--sage-700); }
 
