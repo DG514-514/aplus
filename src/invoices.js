@@ -34,21 +34,21 @@ function listForClient(clientId) {
 function listAll() {
   return db.prepare(`
     SELECT i.id, i.invoice_number, i.client_id, c.name AS client_name, c.email AS client_email, i.status,
-           i.amount_cents, i.due_date, i.service_date, i.service_time, i.notes, i.paid_method, i.paid_at, i.receipt_url, i.created_at
+           i.amount_cents, i.due_date, i.service_date, i.service_time, i.notes, i.paid_method, i.paid_at, i.receipt_url, i.created_at, i.order_id
     FROM invoices i JOIN clients c ON c.id = i.client_id
     ORDER BY i.id DESC
   `).all().map(withItems);
 }
 
-function create({ clientId, items, dueDate, serviceDate, serviceTime, notes, inquiryId }) {
+function create({ clientId, items, dueDate, serviceDate, serviceTime, notes, inquiryId, orderId }) {
   const total = items.reduce((sum, item) => sum + item.amount_cents, 0);
   const invoiceNumber = db.nextInvoiceNumber();
   db.exec('BEGIN');
   try {
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO invoices (invoice_number, client_id, amount_cents, due_date, service_date, service_time, notes, inquiry_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(invoiceNumber, clientId, total, dueDate || null, serviceDate || null, serviceTime || null, notes || null, inquiryId || null);
+      INSERT INTO invoices (invoice_number, client_id, amount_cents, due_date, service_date, service_time, notes, inquiry_id, order_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(invoiceNumber, clientId, total, dueDate || null, serviceDate || null, serviceTime || null, notes || null, inquiryId || null, orderId || null);
     const insertItem = db.prepare('INSERT INTO invoice_items (invoice_id, description, amount_cents) VALUES (?, ?, ?)');
     for (const item of items) insertItem.run(lastInsertRowid, item.description, item.amount_cents);
     if (inquiryId) db.prepare('UPDATE inquiries SET invoice_number = ? WHERE id = ?').run(invoiceNumber, inquiryId);

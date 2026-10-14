@@ -176,12 +176,13 @@ function renderOrders() {
     tbody.append(el('tr', {},
       el('td', { 'data-label': 'Date' }, el('time', {}, fmtDate(o.service_date)), o.service_time ? el('span', { class: 'sub' }, fmtClock(o.service_time)) : null),
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
-      el('td', { 'data-label': 'Client' }, o.client_name),
+      el('td', { 'data-label': 'Client' }, clientLink(o.client_id, o.client_name)),
       el('td', { 'data-label': 'Service' }, el('div', {},
         el('strong', {}, o.service_type), el('span', { class: 'sub' }, `${o.plan} · ${o.location || '—'}`))),
       el('td', { 'data-label': 'Status' }, status),
       el('td', { 'data-label': 'Amount', class: 'num' }, money.format(o.amount_cents / 100)),
       el('td', {}, el('div', { class: 'row-actions' },
+        orderInvoiceAction(o),
         el('button', { type: 'button', class: 'link-btn', onclick: () => editOrder(o) }, 'Edit'),
         el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteOrder(o) }, 'Delete')))));
   }
@@ -219,6 +220,7 @@ function resetOrderForm() {
   form.reset();
   form.plan.value = 'Bi-Weekly';
   fillOrderServicePicker();
+  $('cf-close').addEventListener('click', closeClientFile);
   $('o-service-pick').value = '';
   state.editingOrder = null;
   $('order-form-title').textContent = 'Add an order';
@@ -328,7 +330,7 @@ function renderClients() {
 
   for (const c of rows) {
     tbody.append(el('tr', {},
-      el('td', { 'data-label': 'Client' }, el('div', {}, el('strong', {}, c.name), el('span', { class: 'sub' }, c.email))),
+      el('td', { 'data-label': 'Client' }, el('div', {}, clientLink(c.id, c.name, true), el('span', { class: 'sub' }, c.email))),
       el('td', { 'data-label': 'Residence' }, [c.residence, c.room && `Rm ${c.room}`].filter(Boolean).join(', ') || '—'),
       el('td', { 'data-label': 'Phone' }, c.phone || '—'),
       el('td', { 'data-label': 'Orders', class: 'num' }, String(c.order_count)),
@@ -676,6 +678,8 @@ function resetInvoiceForm() {
   $('invoice-items').replaceChildren();
   addItemRow();
   state.invoiceInquiry = null;
+  state.invoiceOrder = null;
+  $('invoice-order-note').hidden = true;
   formError(form, '');
 }
 
@@ -724,6 +728,7 @@ async function submitInvoice(e) {
       notes: $('i-notes').value,
       items: readItems(),
       inquiryId: state.invoiceInquiry?.id,
+      orderId: state.invoiceOrder?.id,
       sendEmail: $('i-email').checked,
     });
     resetInvoiceForm();
@@ -768,7 +773,7 @@ function renderInvoices() {
     tbody.append(el('tr', {},
       el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
       el('td', { 'data-label': 'Client' }, el('div', {},
-        el('strong', {}, inv.client_name),
+        clientLink(inv.client_id, inv.client_name, true),
         el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')))),
       el('td', { 'data-label': 'Service' }, inv.service_date
         ? el('div', {}, el('strong', {}, fmtDate(inv.service_date)),
@@ -779,6 +784,134 @@ function renderInvoices() {
       el('td', { 'data-label': 'Total', class: 'num' }, money.format(inv.amount_cents / 100)),
       el('td', {}, actions)));
   }
+}
+
+/* ---------- Invoicing an order ---------- */
+
+function orderInvoiceAction(o) {
+  if (o.invoice_number) {
+    const paid = o.invoice_status === 'paid';
+    return el('button', {
+      type: 'button', class: `invoiced-pill ${paid ? 'paid' : 'due'}`, title: 'Show this invoice',
+      onclick: () => { closeClientFile(); showView('invoices'); $('invoice-search').value = o.invoice_number; renderInvoices(); },
+    }, `${o.invoice_number} · ${paid ? 'Paid' : 'Invoiced'}`);
+  }
+  return el('button', { type: 'button', class: 'link-btn', onclick: () => invoiceFromOrder(o) }, 'Invoice');
+}
+
+// Opens Send an invoice pre-filled from the order: client, service line, amount, service date and time.
+function invoiceFromOrder(o) {
+  closeClientFile();
+  resetInvoiceForm();
+  showView('invoices');
+  state.invoiceOrder = o;
+  $('i-client').value = String(o.client_id);
+  $('i-service-date').value = o.service_date;
+  $('i-service-time').value = o.service_time || '';
+  const row = $('invoice-items').querySelector('.item-row');
+  const preset = SERVICES.find((s) => s.name === o.service_type);
+  row.querySelector('.item-service').value = preset ? preset.id : 'custom';
+  row.querySelector('.item-desc').value = o.plan && o.plan !== 'One-Time' ? `${o.service_type} (${o.plan})` : o.service_type;
+  row.querySelector('.item-amount').value = (o.amount_cents / 100).toFixed(2);
+  updateInvoiceTotal();
+  $('invoice-order-note').textContent = `Invoicing order ${o.order_number} — ${fmtDate(o.service_date)}. The order will show as invoiced.`;
+  $('invoice-order-note').hidden = false;
+  $('invoice-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ---------- Client file: everything about one client ---------- */
+
+function clientLink(id, name, strong = false) {
+  return el('button', { type: 'button', class: `client-link${strong ? ' strong' : ''}`, title: 'Open client file', onclick: () => openClientFile(id) }, name);
+}
+
+function closeClientFile() {
+  if ($('client-file').open) $('client-file').close();
+}
+
+async function openClientFile(id) {
+  const c = state.clients.find((x) => x.id === id);
+  if (!c) { toast('That client is no longer on file.'); return; }
+  const orders = state.orders.filter((o) => o.client_id === id);
+  const invs = state.invoices.filter((i) => i.client_id === id);
+  const today = new Date().toISOString().slice(0, 10);
+  const sum = (list) => list.reduce((t, x) => t + x.amount_cents, 0);
+  const paid = invs.filter((i) => i.status === 'paid');
+  const open = invs.filter((i) => i.status === 'open');
+
+  const place = [c.residence, c.room && `Unit/Rm ${c.room}`].filter(Boolean).join(', ') || '—';
+  const size = [c.bedrooms && (c.bedrooms === 'Studio' ? 'Studio' : `${c.bedrooms} bed`), c.bathrooms && `${c.bathrooms} bath`].filter(Boolean).join(' · ');
+  const since = new Date(`${c.created_at.replace(' ', 'T')}Z`).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  const box = $('client-file-body');
+  const parts = [
+    el('div', { class: 'cf-head' },
+      el('div', {},
+        el('h2', { id: 'cf-title' }, c.name),
+        el('p', { class: 'cf-contact' },
+          el('a', { href: `mailto:${c.email}` }, c.email),
+          c.phone ? el('a', { href: `tel:${c.phone.replace(/[^\d+]/g, '')}` }, c.phone) : null),
+        el('p', { class: 'sub' }, `🏠 ${place}${size ? ` · ${size}` : ''} · Client since ${since}`)),
+      el('div', { class: 'cf-terms' }, termsCell(c))),
+    el('div', { class: 'cf-actions' },
+      el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => { closeClientFile(); newOrderFor(c); } }, 'Add Order'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { closeClientFile(); openInvoiceFor(c); } }, 'Send Invoice'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { closeClientFile(); showView('clients'); editClient(c); } }, 'Edit Details')),
+    el('div', { class: 'cf-stats' },
+      stat('Orders', String(orders.length), `${orders.filter((o) => o.status === 'completed').length} completed`),
+      stat('Upcoming', String(orders.filter((o) => o.status === 'scheduled' && o.service_date >= today).length), 'scheduled'),
+      stat('Paid', money.format(sum(paid) / 100), `${paid.length} invoice${paid.length === 1 ? '' : 's'}`),
+      stat('Outstanding', money.format(sum(open) / 100), `${open.length} open invoice${open.length === 1 ? '' : 's'}`)),
+    el('h3', { class: 'cf-section' }, 'Order history'),
+    orders.length ? el('div', { class: 'table-wrap' }, el('table', { class: 'orders admin-table cf-table' },
+      el('thead', {}, el('tr', {}, ...['Date', 'Order', 'Service', 'Status', 'Amount', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, ...orders.map((o) => el('tr', {},
+        el('td', { 'data-label': 'Date' }, fmtDate(o.service_date), o.service_time ? el('span', { class: 'sub' }, fmtClock(o.service_time)) : null),
+        el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
+        el('td', { 'data-label': 'Service' }, el('div', {}, el('strong', {}, o.service_type), el('span', { class: 'sub' }, `${o.plan} · ${o.location || '—'}`))),
+        el('td', { 'data-label': 'Status' }, el('span', { class: `badge badge-${o.status}` }, STATUS_LABELS[o.status])),
+        el('td', { 'data-label': 'Amount', class: 'num' }, money.format(o.amount_cents / 100)),
+        el('td', {}, el('div', { class: 'row-actions' }, orderInvoiceAction(o),
+          el('button', { type: 'button', class: 'link-btn', onclick: () => { closeClientFile(); showView('orders'); editOrder(o); } }, 'Edit'))))))))
+      : el('p', { class: 'empty' }, 'No orders yet.'),
+    el('h3', { class: 'cf-section' }, 'Invoices'),
+    invs.length ? el('div', { class: 'table-wrap' }, el('table', { class: 'orders admin-table cf-table' },
+      el('thead', {}, el('tr', {}, ...['Invoice', 'Items', 'Sent', 'Status', 'Total', ''].map((h) => el('th', {}, h)))),
+      el('tbody', {}, ...invs.map((inv) => {
+        const [cls, label] = invoiceStatus(inv);
+        return el('tr', {},
+          el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
+          el('td', { 'data-label': 'Items' }, inv.items.map((it) => it.description).join(', ')),
+          el('td', { 'data-label': 'Sent' }, fmtDate(inv.created_at.slice(0, 10))),
+          el('td', { 'data-label': 'Status' }, el('span', { class: `badge badge-${cls}` }, label)),
+          el('td', { 'data-label': 'Total', class: 'num' }, money.format(inv.amount_cents / 100)),
+          el('td', {}, inv.receipt_url ? el('a', { class: 'link-btn', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'Receipt') : ''));
+      }))))
+      : el('p', { class: 'empty' }, 'No invoices yet.'),
+    el('h3', { class: 'cf-section' }, 'Supplier jobs'),
+    el('div', { id: 'cf-jobs' }, el('p', { class: 'sub' }, 'Loading…')),
+    c.signup_note ? el('div', {}, el('h3', { class: 'cf-section' }, 'Note from sign-up'), el('p', { class: 'inquiry-msg' }, c.signup_note)) : null];
+  box.replaceChildren(...parts.filter(Boolean));
+  $('client-file').showModal();
+  box.scrollTop = 0;
+
+  try {
+    const { jobs } = await api('/jobs');
+    const mine = jobs.filter((j) => j.client_id === id);
+    const target = document.getElementById('cf-jobs');
+    if (!target) return;
+    target.replaceChildren(mine.length
+      ? el('ul', { class: 'cf-jobs' }, ...mine.map((j) => el('li', {},
+        el('span', { class: 'mono' }, j.job_number), ' ',
+        `${fmtDate(j.service_date)} · ${j.cleaner_name} · `,
+        el('strong', {}, j.status === 'completed' ? `Completed by ${j.completed_by}` : ({ requested: 'Awaiting supplier', accepted: 'Pending completion', cancelled: 'Cancelled' })[j.status]),
+        j.photos.length ? ` · ${j.photos.length} photo${j.photos.length === 1 ? '' : 's'}` : '')))
+      : el('p', { class: 'empty' }, 'No supplier jobs for this client.'));
+  } catch { /* jobs are a nice-to-have here */ }
+}
+
+function stat(label, value, meta) {
+  return el('div', { class: 'cf-stat' }, el('span', { class: 'cf-stat-label' }, label), el('strong', {}, value), el('span', { class: 'sub' }, meta));
 }
 
 async function markInvoicePaid(inv) {

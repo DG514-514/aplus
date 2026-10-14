@@ -937,3 +937,24 @@ test('orders keep an optional requested service time', async () => {
   order = orders.find((o) => o.client_id === Number(clientId));
   assert.equal(order.service_time, null);
 });
+
+test('invoicing an order links them, and the order shows the invoice status', async () => {
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = { cookie: adminLogin.headers.get('set-cookie').split(';')[0] };
+  const clientId = Number(addClient('linked@example.com', 'linkedpass1', 'Lin Ked'));
+  const otherId = Number(addClient('other@example.com', 'otherpass1', 'Oth Er'));
+  await post('/api/admin/orders', { clientId, date: '2026-11-10', service: 'Studio Standard Clean', plan: 'One-Time', amount: '110', status: 'scheduled' }, admin);
+  let { orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+  const order = orders.find((o) => o.client_id === clientId);
+  assert.equal(order.invoice_number, null);
+
+  const item = [{ description: 'Studio Standard Clean', amount: '110' }];
+  assert.equal((await post('/api/admin/invoices', { clientId: otherId, orderId: order.id, items: item, sendEmail: false }, admin)).status, 400);
+  const res = await post('/api/admin/invoices', { clientId, orderId: order.id, items: item, serviceDate: '2026-11-10', sendEmail: false }, admin);
+  assert.equal(res.status, 201);
+  const { invoiceNumber } = await res.json();
+  ({ orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json());
+  const linked = orders.find((o) => o.id === order.id);
+  assert.equal(linked.invoice_number, invoiceNumber);
+  assert.equal(linked.invoice_status, 'open');
+});
