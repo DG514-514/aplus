@@ -174,9 +174,14 @@ db.nextOrderNumber = () => {
   return `AP-${10001 + (row ? row.seq : 0)}`;
 };
 
+// Invoice numbers are random (e.g. INV-48271935) so clients can't tell how many invoices exist or guess
+// another invoice's number. Existing sequential numbers are kept; a clash simply picks another.
 db.nextInvoiceNumber = () => {
-  const row = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'invoices'").get();
-  return `INV-${1001 + (row ? row.seq : 0)}`;
+  const exists = db.prepare('SELECT 1 FROM invoices WHERE invoice_number = ?');
+  for (;;) {
+    const number = `INV-${require('node:crypto').randomInt(10_000_000, 100_000_000)}`;
+    if (!exists.get(number)) return number;
+  }
 };
 
 // Folder next to the database (on the persistent disk in production) for uploaded files.
