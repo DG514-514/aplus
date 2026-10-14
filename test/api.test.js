@@ -1041,3 +1041,20 @@ test('invoices can be cancelled (with optional Stripe refund) and orders/invoice
   const mine = await (await fetch(`${base}/api/orders`, { headers: { cookie } })).json();
   assert.equal(JSON.stringify(mine).includes('Gate code'), false);
 });
+
+test('new invoice numbers are random 8-digit numbers, never repeated', async () => {
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = { cookie: adminLogin.headers.get('set-cookie').split(';')[0] };
+  const clientId = Number(addClient('random@example.com', 'randompass1', 'Ran Dom'));
+  const numbers = [];
+  for (let i = 0; i < 5; i += 1) {
+    const res = await post('/api/admin/invoices', { clientId, items: [{ description: 'Studio Standard Clean', amount: '110' }], sendEmail: false }, admin);
+    numbers.push((await res.json()).invoiceNumber);
+  }
+  for (const n of numbers) assert.match(n, /^INV-\d{8}$/);
+  assert.equal(new Set(numbers).size, numbers.length);
+  // Still payable/lookup-able by number from the client portal.
+  const { cookie } = await login('random@example.com', 'randompass1');
+  const { invoices } = await (await fetch(`${base}/api/invoices`, { headers: { cookie } })).json();
+  assert.equal(invoices.length, 5);
+});
