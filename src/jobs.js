@@ -1,0 +1,493 @@
+'use strict';
+
+// Supplier jobs: the owner sends job requests to suppliers (cleaners), suppliers accept or reply in a
+// thread, then upload before/after photos, record who did the work and mark the job complete.
+// The owner tracks which completed jobs have been paid to each supplier.
+
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const express = require('express');
+const db = require('./db');
+const auth = require('./auth');
+const notify = require('./notify');
+const push = require('./push');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS jobs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    cleaner_id        INTEGER NOT NULL REFERENCES cleaners(id),
+    client_id         INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    client_name       TEXT,
+    address           TEXT NOT NULL,
+    unit              TEXT,
+    bedrooms          TEXT,
+    bathrooms         TEXT,
+    service           TEXT,
+    service_date      TEXT NOT NULL,
+    time_start        TEXT,
+    time_end          TEXT,
+    instructions      TEXT,
+    pay_cents         INTEGER NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'requested'
+                      CHECK (status IN ('requested', 'accepted', 'completed', 'cancelled')),
+    accepted_at       TEXT,
+    completed_at      TEXT,
+    completed_by      TEXT,
+    completion_notes  TEXT,
+    supplier_paid_at  TEXT,
+    supplier_paid_ref TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_jobs_cleaner ON jobs(cleaner_id, status);
+
+  CREATE TABLE IF NOT EXISTS job_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    author     TEXT NOT NULL CHECK (author IN ('owner', 'supplier')),
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS job_photos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('before', 'after')),
+    file       TEXT NOT NULL,
+    mime       TEXT NOT NULL,
+    bytes      INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS supplier_sessions (
+    token_hash TEXT PRIMARY KEY,
+    cleaner_id INTEGER NOT NULL REFERENCES cleaners(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
+`);
+if (!db.prepare('PRAGMA table_info(cleaners)').all().some((c) => c.name === 'password_hash')) {
+  db.exec('ALTER TABLE cleaners ADD COLUMN password_hash TEXT');
+}
+
+const PHOTO_DIR = path.join(db.dataDir, 'uploads', 'jobs');
+const COOKIE = 'aplus_sup';
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_PHOTOS_PER_JOB = 30;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
+const BEDROOMS = ['Studio', '1', '2', '3', '4', '5', '6+'];
+const BATHROOMS = ['1', '1.5', '2', '2.5', '3', '3.5', '4+'];
+
+const str = (value, max = 200) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+const jobNumber = (id) => `J-${1000 + id}`;
+const siteUrl = () => (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const dollars = (cents) => `$${(cents / 100).toFixed(2)}`;
+const warn = (label) => (err) => console.error(`${label}:`, err.message);
+
+/* ---------- Reading jobs ---------- */
+
+function decorate(rows) {
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  const marks = ids.map(() => '?').join(',');
+  const messages = db.prepare(`SELECT id, job_id, author, body, created_at FROM job_messages WHERE job_id IN (${marks}) ORDER BY id`).all(...ids);
+  const photos = db.prepare(`SELECT id, job_id, kind, created_at FROM job_photos WHERE job_id IN (${marks}) ORDER BY id`).all(...ids);
+  return rows.map((j) => {
+    const thread = messages.filter((m) => m.job_id === j.id).map(({ job_id, ...m }) => m);
+    return {
+      ...j,
+      job_number: jobNumber(j.id),
+      messages: thread,
+      photos: photos.filter((p) => p.job_id === j.id).map(({ job_id, ...p }) => p),
+      // The supplier wrote last on an open request: the owner should respond.
+      awaiting_owner: j.status === 'requested' && thread.length > 0 && thread[thread.length - 1].author === 'supplier',
+    };
+  });
+}
+
+const JOB_COLUMNS = `j.*, c.name AS cleaner_name, c.company AS cleaner_company`;
+const getJob = (id) => db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs j JOIN cleaners c ON c.id = j.cleaner_id WHERE j.id = ?`).get(id);
+
+function listJobs(cleanerId) {
+  const rows = cleanerId
+    ? db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs j JOIN cleaners c ON c.id = j.cleaner_id WHERE j.cleaner_id = ? ORDER BY j.service_date DESC, j.id DESC`).all(cleanerId)
+    : db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs j JOIN cleaners c ON c.id = j.cleaner_id ORDER BY j.service_date DESC, j.id DESC`).all();
+  return decorate(rows);
+}
+
+// What A+ owes each supplier: completed jobs not yet paid, and what's been paid.
+function payables(cleanerId) {
+  const where = cleanerId ? 'AND j.cleaner_id = ?' : '';
+  return db.prepare(`
+    SELECT c.id AS cleaner_id, c.name AS cleaner_name, c.company AS cleaner_company,
+      SUM(CASE WHEN j.supplier_paid_at IS NULL THEN 1 ELSE 0 END) AS unpaid_jobs,
+      COALESCE(SUM(CASE WHEN j.supplier_paid_at IS NULL THEN j.pay_cents END), 0) AS outstanding_cents,
+      SUM(CASE WHEN j.supplier_paid_at IS NOT NULL THEN 1 ELSE 0 END) AS paid_jobs,
+      COALESCE(SUM(CASE WHEN j.supplier_paid_at IS NOT NULL THEN j.pay_cents END), 0) AS paid_cents
+    FROM jobs j JOIN cleaners c ON c.id = j.cleaner_id
+    WHERE j.status = 'completed' ${where}
+    GROUP BY c.id ORDER BY outstanding_cents DESC, c.name COLLATE NOCASE
+  `).all(...(cleanerId ? [cleanerId] : []));
+}
+
+function readJob(b) {
+  const job = {
+    cleaner_id: Number(b.cleanerId),
+    client_id: b.clientId ? Number(b.clientId) : null,
+    client_name: str(b.clientName, 120) || null,
+    address: str(b.address, 200),
+    unit: str(b.unit, 40) || null,
+    bedrooms: BEDROOMS.includes(b.bedrooms) ? b.bedrooms : null,
+    bathrooms: BATHROOMS.includes(b.bathrooms) ? b.bathrooms : null,
+    service: str(b.service, 120) || null,
+    service_date: str(b.serviceDate, 10),
+    time_start: TIME_RE.test(b.timeStart || '') ? b.timeStart : null,
+    time_end: TIME_RE.test(b.timeEnd || '') ? b.timeEnd : null,
+    instructions: str(b.instructions, 2000) || null,
+    pay_cents: Math.round(Number(b.pay) * 100),
+  };
+  if (!db.prepare('SELECT 1 FROM cleaners WHERE id = ?').get(job.cleaner_id)) return { error: 'Choose a supplier.' };
+  if (job.client_id) {
+    const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(job.client_id);
+    if (!client) return { error: 'That client no longer exists.' };
+    job.client_name = job.client_name || client.name;
+  }
+  if (!job.address) return { error: 'Add the address of the job.' };
+  if (!DATE_RE.test(job.service_date)) return { error: 'Choose the requested date.' };
+  if (job.time_start && job.time_end && job.time_end <= job.time_start) return { error: 'The end time must be after the start time.' };
+  if (!Number.isFinite(job.pay_cents) || job.pay_cents < 0 || job.pay_cents > 10_000_000) return { error: 'Enter what you’ll pay the supplier for this job.' };
+  return { job };
+}
+
+/* ---------- Photos ---------- */
+
+function sniffImage(buf) {
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ['image/jpeg', 'jpg'];
+  if (buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return ['image/png', 'png'];
+  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return ['image/webp', 'webp'];
+  return null;
+}
+
+function sendPhoto(res, photo) {
+  const file = path.join(PHOTO_DIR, path.basename(photo.file));
+  if (!fs.existsSync(file)) return res.status(404).end();
+  res.set({ 'Content-Type': photo.mime, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+  return res.sendFile(file);
+}
+
+function deletePhotoFiles(jobId) {
+  for (const p of db.prepare('SELECT file FROM job_photos WHERE job_id = ?').all(jobId)) {
+    fs.rm(path.join(PHOTO_DIR, path.basename(p.file)), { force: true }, () => {});
+  }
+}
+
+/* ---------- Supplier sessions ---------- */
+
+function supplierFromRequest(req) {
+  const token = auth.readCookie(req, COOKIE);
+  if (!token) return null;
+  const row = db.prepare(`
+    SELECT c.id, c.name, c.company, c.email, c.phone, s.expires_at
+    FROM supplier_sessions s JOIN cleaners c ON c.id = s.cleaner_id
+    WHERE s.token_hash = ? AND c.active = 1 AND c.password_hash IS NOT NULL
+  `).get(auth.sha256(token));
+  if (!row || row.expires_at < Date.now()) return null;
+  delete row.expires_at;
+  return { supplier: row, token };
+}
+
+function requireSupplier(req, res, next) {
+  const session = supplierFromRequest(req);
+  if (!session) return res.status(401).json({ error: 'Please sign in.' });
+  req.supplier = session.supplier;
+  req.supplierToken = session.token;
+  next();
+}
+
+const isSupplier = (req) => Boolean(supplierFromRequest(req));
+
+/* ---------- Supplier API (/api/supplier) ---------- */
+
+const supplierRouter = express.Router();
+
+supplierRouter.post('/login', (req, res) => {
+  const email = str(req.body?.email, 254).toLowerCase();
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (auth.loginRateLimited(`sup:${req.ip}`)) {
+    return res.status(429).json({ error: 'Too many sign-in attempts. Please wait 15 minutes and try again.' });
+  }
+  if (!email || !password) return res.status(400).json({ error: 'Enter your email and password.' });
+  const cleaner = db.prepare('SELECT id, password_hash, active FROM cleaners WHERE lower(email) = ? AND password_hash IS NOT NULL').get(email);
+  const ok = auth.verifyPassword(password, cleaner ? cleaner.password_hash : auth.DUMMY_HASH);
+  if (!cleaner || !ok || !cleaner.active) {
+    return res.status(401).json({ error: 'That email and password combination doesn’t match our records.' });
+  }
+  auth.clearLoginAttempts(`sup:${req.ip}`);
+  db.prepare('DELETE FROM supplier_sessions WHERE expires_at < ?').run(Date.now());
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('INSERT INTO supplier_sessions (token_hash, cleaner_id, expires_at) VALUES (?, ?, ?)')
+    .run(auth.sha256(token), cleaner.id, Date.now() + SESSION_TTL_MS);
+  res.cookie(COOKIE, token, {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: SESSION_TTL_MS, path: '/',
+  });
+  res.json({ ok: true });
+});
+
+supplierRouter.post('/logout', (req, res) => {
+  const token = auth.readCookie(req, COOKIE);
+  if (token) db.prepare('DELETE FROM supplier_sessions WHERE token_hash = ?').run(auth.sha256(token));
+  res.clearCookie(COOKIE, { path: '/' });
+  res.json({ ok: true });
+});
+
+supplierRouter.use(requireSupplier);
+
+supplierRouter.get('/me', (req, res) => {
+  res.json({ supplier: req.supplier, payables: payables(req.supplier.id)[0] || null });
+});
+
+// Suppliers see their own jobs (cancelled ones only briefly) — never client contact details beyond the job.
+supplierRouter.get('/jobs', (req, res) => {
+  const jobs = listJobs(req.supplier.id)
+    .filter((j) => j.status !== 'cancelled' || j.created_at >= new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10))
+    .map(({ client_id, ...j }) => j);
+  res.json({ jobs });
+});
+
+function ownJob(req, res) {
+  const job = getJob(Number(req.params.id));
+  if (!job || job.cleaner_id !== req.supplier.id) {
+    res.status(404).json({ error: 'Job not found.' });
+    return null;
+  }
+  return job;
+}
+
+function tellOwner(job, title, lines) {
+  notify.sendNotice({
+    subject: `${title}: ${jobNumber(job.id)} · ${job.address}`,
+    lines,
+    link: siteUrl() ? ['Open in dashboard', `${siteUrl()}/admin#jobs`] : null,
+  }).catch(warn('Job email failed'));
+  push.notifyOwner({ title, body: `${jobNumber(job.id)} · ${job.cleaner_name}`, url: '/admin#jobs', tag: `job-${job.id}` }).catch(warn('Push failed'));
+}
+
+supplierRouter.post('/jobs/:id/accept', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  if (job.status !== 'requested') return res.status(409).json({ error: 'This job can no longer be accepted.' });
+  db.prepare("UPDATE jobs SET status = 'accepted', accepted_at = datetime('now') WHERE id = ?").run(job.id);
+  res.json({ ok: true });
+  tellOwner(job, 'Job accepted', [`${job.cleaner_name} accepted job ${jobNumber(job.id)}.`, `${job.address} · ${job.service_date}`]);
+});
+
+supplierRouter.post('/jobs/:id/messages', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  const body = str(req.body?.body, 2000);
+  if (!body) return res.status(400).json({ error: 'Write a comment first.' });
+  if (job.status === 'cancelled') return res.status(409).json({ error: 'This job was cancelled.' });
+  db.prepare("INSERT INTO job_messages (job_id, author, body) VALUES (?, 'supplier', ?)").run(job.id, body);
+  res.status(201).json({ ok: true });
+  tellOwner(job, 'Supplier comment', [`${job.cleaner_name} commented on job ${jobNumber(job.id)} (${job.address}):`, body]);
+});
+
+const rawImage = express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: MAX_PHOTO_BYTES });
+
+supplierRouter.post('/jobs/:id/photos', rawImage, (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  const kind = req.query.kind;
+  if (!['before', 'after'].includes(kind)) return res.status(400).json({ error: 'Say whether this is a before or after photo.' });
+  if (job.status !== 'accepted') return res.status(409).json({ error: 'Photos can be added once the job is accepted and before it’s marked complete.' });
+  const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  const type = sniffImage(buf);
+  if (!type) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP photo.' });
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM job_photos WHERE job_id = ?').get(job.id);
+  if (n >= MAX_PHOTOS_PER_JOB) return res.status(400).json({ error: `Up to ${MAX_PHOTOS_PER_JOB} photos per job.` });
+  fs.mkdirSync(PHOTO_DIR, { recursive: true });
+  const file = `${job.id}-${kind}-${crypto.randomBytes(8).toString('hex')}.${type[1]}`;
+  fs.writeFileSync(path.join(PHOTO_DIR, file), buf);
+  const { lastInsertRowid } = db.prepare('INSERT INTO job_photos (job_id, kind, file, mime, bytes) VALUES (?, ?, ?, ?, ?)')
+    .run(job.id, kind, file, type[0], buf.length);
+  res.status(201).json({ id: Number(lastInsertRowid), kind });
+});
+
+supplierRouter.delete('/jobs/:id/photos/:photoId', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  if (job.status !== 'accepted') return res.status(409).json({ error: 'Photos on a completed job can’t be changed.' });
+  const photo = db.prepare('SELECT * FROM job_photos WHERE id = ? AND job_id = ?').get(Number(req.params.photoId), job.id);
+  if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+  db.prepare('DELETE FROM job_photos WHERE id = ?').run(photo.id);
+  fs.rm(path.join(PHOTO_DIR, path.basename(photo.file)), { force: true }, () => {});
+  res.json({ ok: true });
+});
+
+supplierRouter.post('/jobs/:id/complete', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  if (job.status !== 'accepted') return res.status(409).json({ error: 'Only accepted jobs can be marked complete.' });
+  const completedBy = str(req.body?.completedBy, 120).replace(/\s+/g, ' ');
+  if (completedBy.split(' ').filter(Boolean).length < 2) return res.status(400).json({ error: 'Enter the full name (first and last) of the employee who completed the job.' });
+  const counts = Object.fromEntries(db.prepare('SELECT kind, COUNT(*) AS n FROM job_photos WHERE job_id = ? GROUP BY kind').all(job.id).map((r) => [r.kind, r.n]));
+  if (!counts.before || !counts.after) return res.status(400).json({ error: 'Upload at least one before photo and one after photo first.' });
+  db.prepare("UPDATE jobs SET status = 'completed', completed_at = datetime('now'), completed_by = ?, completion_notes = ? WHERE id = ?")
+    .run(completedBy, str(req.body?.notes, 2000) || null, job.id);
+  res.json({ ok: true });
+  tellOwner(job, 'Job completed', [
+    `${job.cleaner_name} marked job ${jobNumber(job.id)} complete.`,
+    `${job.address} · completed by ${completedBy}`,
+    `${counts.before} before / ${counts.after} after photos uploaded. Amount owed to supplier: ${dollars(job.pay_cents)}.`,
+  ]);
+});
+
+supplierRouter.get('/photos/:id', (req, res) => {
+  const photo = db.prepare('SELECT p.* FROM job_photos p JOIN jobs j ON j.id = p.job_id WHERE p.id = ? AND j.cleaner_id = ?')
+    .get(Number(req.params.id), req.supplier.id);
+  if (!photo) return res.status(404).end();
+  return sendPhoto(res, photo);
+});
+
+/* ---------- Owner API (mounted on the admin router, so owner-only) ---------- */
+
+function tellSupplier(job, subject, lines) {
+  const cleaner = db.prepare('SELECT email FROM cleaners WHERE id = ?').get(job.cleaner_id);
+  if (!cleaner?.email) return;
+  notify.sendNotice({
+    to: [cleaner.email],
+    subject: `${subject}: ${jobNumber(job.id)} · ${job.address}`,
+    lines,
+    link: siteUrl() ? ['Open your jobs', `${siteUrl()}/supplier`] : null,
+  }).catch(warn('Supplier email failed'));
+}
+
+function describe(job) {
+  const when = [job.service_date, job.time_start && `${job.time_start}${job.time_end ? `–${job.time_end}` : ''}`].filter(Boolean).join(' ');
+  const size = [job.bedrooms && (job.bedrooms === 'Studio' ? 'Studio' : `${job.bedrooms} bed`), job.bathrooms && `${job.bathrooms} bath`].filter(Boolean).join(' / ');
+  return [`${job.address}${job.unit ? `, Unit ${job.unit}` : ''}`, [size, job.service].filter(Boolean).join(' · '), `When: ${when}`, `Pay: ${dollars(job.pay_cents)}`];
+}
+
+function registerAdminRoutes(router) {
+  const jobsRouter = express.Router();
+
+  jobsRouter.get('/', (_req, res) => res.json({ jobs: listJobs(), payables: payables() }));
+
+  jobsRouter.post('/', (req, res) => {
+    const { job, error } = readJob(req.body || {});
+    if (error) return res.status(400).json({ error });
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO jobs (cleaner_id, client_id, client_name, address, unit, bedrooms, bathrooms, service, service_date, time_start, time_end, instructions, pay_cents)
+      VALUES (:cleaner_id, :client_id, :client_name, :address, :unit, :bedrooms, :bathrooms, :service, :service_date, :time_start, :time_end, :instructions, :pay_cents)
+    `).run(job);
+    const saved = getJob(Number(lastInsertRowid));
+    res.status(201).json({ id: saved.id, job_number: jobNumber(saved.id) });
+    tellSupplier(saved, 'New job request', ['You have a new job request from A+ Cleaning Solutions:', ...describe(saved),
+      ...(saved.instructions ? ['', saved.instructions] : []), '', 'Sign in to accept it or reply with any questions.']);
+  });
+
+  jobsRouter.patch('/:id', (req, res) => {
+    const existing = getJob(Number(req.params.id));
+    if (!existing) return res.status(404).json({ error: 'Job not found.' });
+    if (['completed', 'cancelled'].includes(existing.status)) return res.status(409).json({ error: 'Completed or cancelled jobs can’t be edited.' });
+    const { job, error } = readJob(req.body || {});
+    if (error) return res.status(400).json({ error });
+    // Re-assigning to another supplier sends it back to them as a new request.
+    const reassigned = job.cleaner_id !== existing.cleaner_id;
+    db.prepare(`
+      UPDATE jobs SET cleaner_id = :cleaner_id, client_id = :client_id, client_name = :client_name, address = :address, unit = :unit,
+        bedrooms = :bedrooms, bathrooms = :bathrooms, service = :service, service_date = :service_date, time_start = :time_start,
+        time_end = :time_end, instructions = :instructions, pay_cents = :pay_cents
+        ${reassigned ? ", status = 'requested', accepted_at = NULL" : ''}
+      WHERE id = :id
+    `).run({ ...job, id: existing.id });
+    const saved = getJob(existing.id);
+    res.json({ ok: true, reassigned });
+    tellSupplier(saved, reassigned ? 'New job request' : 'Job updated', [
+      reassigned ? 'You have a new job request from A+ Cleaning Solutions:' : `Job ${jobNumber(saved.id)} has been updated:`,
+      ...describe(saved), ...(saved.instructions ? ['', saved.instructions] : [])]);
+  });
+
+  jobsRouter.post('/:id/messages', (req, res) => {
+    const job = getJob(Number(req.params.id));
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+    const body = str(req.body?.body, 2000);
+    if (!body) return res.status(400).json({ error: 'Write a reply first.' });
+    db.prepare("INSERT INTO job_messages (job_id, author, body) VALUES (?, 'owner', ?)").run(job.id, body);
+    res.status(201).json({ ok: true });
+    tellSupplier(job, 'New message from A+', [`A+ Cleaning Solutions replied about job ${jobNumber(job.id)} (${job.address}):`, body]);
+  });
+
+  jobsRouter.post('/:id/cancel', (req, res) => {
+    const job = getJob(Number(req.params.id));
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+    if (job.status === 'completed') return res.status(409).json({ error: 'Completed jobs can’t be cancelled.' });
+    db.prepare("UPDATE jobs SET status = 'cancelled' WHERE id = ?").run(job.id);
+    res.json({ ok: true });
+    if (job.status !== 'cancelled') tellSupplier(job, 'Job cancelled', [`Job ${jobNumber(job.id)} on ${job.service_date} at ${job.address} has been cancelled. Sorry for any inconvenience.`]);
+  });
+
+  jobsRouter.delete('/:id', (req, res) => {
+    const job = getJob(Number(req.params.id));
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+    if (job.status !== 'cancelled') return res.status(409).json({ error: 'Cancel the job before deleting it.' });
+    deletePhotoFiles(job.id);
+    db.prepare('DELETE FROM jobs WHERE id = ?').run(job.id);
+    res.json({ ok: true });
+  });
+
+  // Supplier payment tracking.
+  jobsRouter.post('/:id/paid', (req, res) => {
+    const job = getJob(Number(req.params.id));
+    if (!job) return res.status(404).json({ error: 'Job not found.' });
+    if (job.status !== 'completed') return res.status(409).json({ error: 'Only completed jobs can be marked paid.' });
+    if (req.body?.paid === false) {
+      db.prepare('UPDATE jobs SET supplier_paid_at = NULL, supplier_paid_ref = NULL WHERE id = ?').run(job.id);
+    } else {
+      db.prepare("UPDATE jobs SET supplier_paid_at = datetime('now'), supplier_paid_ref = ? WHERE id = ?").run(str(req.body?.ref, 120) || null, job.id);
+    }
+    res.json({ ok: true });
+  });
+
+  jobsRouter.post('/pay-all', (req, res) => {
+    const cleanerId = Number(req.body?.cleanerId);
+    const result = db.prepare(`
+      UPDATE jobs SET supplier_paid_at = datetime('now'), supplier_paid_ref = ?
+      WHERE cleaner_id = ? AND status = 'completed' AND supplier_paid_at IS NULL
+    `).run(str(req.body?.ref, 120) || null, cleanerId);
+    res.json({ ok: true, updated: result.changes });
+  });
+
+  jobsRouter.get('/photos/:id', (req, res) => {
+    const photo = db.prepare('SELECT * FROM job_photos WHERE id = ?').get(Number(req.params.id));
+    if (!photo) return res.status(404).end();
+    return sendPhoto(res, photo);
+  });
+
+  router.use('/jobs', jobsRouter);
+
+  // Supplier portal logins, managed from the Suppliers / Cleaners tab.
+  router.post('/cleaners/:id/portal', (req, res) => {
+    const cleaner = db.prepare('SELECT id, email FROM cleaners WHERE id = ?').get(Number(req.params.id));
+    if (!cleaner) return res.status(404).json({ error: 'Cleaner not found.' });
+    if (!cleaner.email) return res.status(400).json({ error: 'Add an email for this supplier first — it’s their username.' });
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    const clash = db.prepare('SELECT 1 FROM cleaners WHERE lower(email) = lower(?) AND id != ? AND password_hash IS NOT NULL').get(cleaner.email, cleaner.id);
+    if (clash) return res.status(409).json({ error: 'Another supplier already signs in with that email.' });
+    db.prepare('UPDATE cleaners SET password_hash = ? WHERE id = ?').run(auth.hashPassword(password), cleaner.id);
+    db.prepare('DELETE FROM supplier_sessions WHERE cleaner_id = ?').run(cleaner.id);
+    res.json({ ok: true, email: cleaner.email });
+  });
+
+  router.delete('/cleaners/:id/portal', (req, res) => {
+    db.prepare('UPDATE cleaners SET password_hash = NULL WHERE id = ?').run(Number(req.params.id));
+    db.prepare('DELETE FROM supplier_sessions WHERE cleaner_id = ?').run(Number(req.params.id));
+    res.json({ ok: true });
+  });
+}
+
+const jobCountForCleaner = (cleanerId) => db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE cleaner_id = ?').get(cleanerId).n;
+
+module.exports = { supplierRouter, registerAdminRoutes, isSupplier, jobCountForCleaner, rawImage };

@@ -19,8 +19,11 @@
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/css/portal.css">
   <link rel="stylesheet" href="/css/admin.css">
+  <link rel="stylesheet" href="/css/jobs.css">
   <script src="/js/app.js" defer></script>
   <script src="/js/admin.js" defer></script>
+  <script src="/js/jobs-common.js" defer></script>
+  <script src="/js/admin-jobs.js" defer></script>
 </head>
 <body class="portal-page">
   <header class="portal-header">
@@ -40,6 +43,7 @@
     <div class="tabs admin-tabs" role="tablist" aria-label="Sections">
       <button role="tab" type="button" class="tab" aria-selected="true" data-view="orders">Orders <span class="count" id="count-orders"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="clients">Clients <span class="count" id="count-clients"></span></button>
+      <button role="tab" type="button" class="tab" aria-selected="false" data-view="jobs">Jobs <span class="count" id="count-jobs"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="invoices">Invoices <span class="count" id="count-invoices"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="cleaners">Suppliers / Cleaners <span class="count" id="count-cleaners"></span></button>
       <button role="tab" type="button" class="tab" aria-selected="false" data-view="inquiries">Quote Requests <span class="count" id="count-inquiries"></span></button>
@@ -60,19 +64,12 @@
             <select id="o-client" name="clientId" required></select>
           </div>
           <div class="field">
-            <label for="o-date">Service date</label>
+            <label for="o-date">Requested service date</label>
             <input id="o-date" name="date" type="date" required>
           </div>
           <div class="field">
-            <label for="o-service">Service</label>
-            <input id="o-service" name="service" list="services" required placeholder="Dorm Room Clean">
-            <datalist id="services">
-              <option value="Dorm Room Clean"></option>
-              <option value="Dorm Room + Shared Bathroom"></option>
-              <option value="Shared Space Clean"></option>
-              <option value="Move-In Deep Clean"></option>
-              <option value="Move-Out Deep Clean"></option>
-            </datalist>
+            <label for="o-time">Requested service time <span class="optional">(optional)</span></label>
+            <input id="o-time" name="time" type="time">
           </div>
           <div class="field">
             <label for="o-plan">Plan</label>
@@ -83,9 +80,13 @@
               <option>One-Time</option>
             </select>
           </div>
-          <div class="field">
-            <label for="o-amount">Amount ($)</label>
-            <input id="o-amount" name="amount" type="number" min="0" step="0.01" required placeholder="49.00">
+          <div class="field full">
+            <label for="o-service-pick">Service</label>
+            <div class="item-row order-service-row">
+              <select id="o-service-pick" aria-label="Choose a service"></select>
+              <input id="o-service" name="service" required placeholder="Description, e.g. Bi-Weekly cleaning" aria-label="Service description">
+              <input id="o-amount" name="amount" type="number" min="0" step="0.01" required placeholder="Amount $" aria-label="Amount ($)">
+            </div>
           </div>
           <div class="field">
             <label for="o-status">Status</label>
@@ -300,6 +301,98 @@
         </div>
         <div id="cleaners-list" class="cleaner-list"></div>
         <p class="empty" id="cleaners-empty" hidden>No cleaners yet — add your first one above.</p>
+      </div>
+    </section>
+
+    <!-- Supplier jobs -->
+    <section class="view" id="view-jobs" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Supplier payments</h2>
+          <span class="muted" id="payables-total"></span>
+        </div>
+        <div class="payables" id="payables"></div>
+        <p class="empty" id="payables-empty" hidden>No completed jobs yet. Amounts owed to suppliers appear here once they mark jobs complete.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="job-form-title">Send a job request to a supplier</h2>
+          <button type="button" class="btn btn-outline btn-sm" id="job-cancel-edit" hidden>Cancel Edit</button>
+        </div>
+        <form id="job-form" class="form-grid admin-form" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="j-cleaner">Supplier</label>
+            <select id="j-cleaner" name="cleanerId" required></select>
+            <span class="field-hint" id="j-cleaner-hint"></span>
+          </div>
+          <div class="field">
+            <label for="j-client">Client <span class="optional">(fills in the address)</span></label>
+            <select id="j-client" name="clientId"></select>
+          </div>
+          <div class="field">
+            <label for="j-address">Address</label>
+            <input id="j-address" name="address" placeholder="Street address or residence" required>
+          </div>
+          <div class="field">
+            <label for="j-unit">Unit / room <span class="optional">(optional)</span></label>
+            <input id="j-unit" name="unit" placeholder="e.g. 12B">
+          </div>
+          <div class="field">
+            <label for="j-bedrooms">Bedrooms</label>
+            <select id="j-bedrooms" name="bedrooms">
+              <option value="">Select…</option><option>Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6+</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="j-bathrooms">Bathrooms</label>
+            <select id="j-bathrooms" name="bathrooms">
+              <option value="">Select…</option><option>1</option><option>1.5</option><option>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4+</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="j-service">Service</label>
+            <select id="j-service" name="service"></select>
+          </div>
+          <div class="field">
+            <label for="j-pay">Pay to supplier ($)</label>
+            <input id="j-pay" name="pay" type="number" min="0" step="0.01" inputmode="decimal" required>
+            <span class="field-hint" id="j-pay-hint"></span>
+          </div>
+          <div class="field">
+            <label for="j-date">Requested date</label>
+            <input id="j-date" name="serviceDate" type="date" required>
+          </div>
+          <div class="field">
+            <label>Requested time <span class="optional">(window)</span></label>
+            <div class="inline">
+              <input id="j-start" name="timeStart" type="time" aria-label="Start time">
+              <input id="j-end" name="timeEnd" type="time" aria-label="End time">
+            </div>
+          </div>
+          <div class="field full">
+            <label for="j-instructions">Instructions for the supplier <span class="optional">(optional)</span></label>
+            <textarea id="j-instructions" name="instructions" rows="2" placeholder="Access / key pickup, parking, special requests…"></textarea>
+          </div>
+          <div class="full"><button class="btn btn-primary" type="submit" id="job-submit">Send Job Request</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Jobs</h2>
+          <input type="search" id="job-search" class="search" placeholder="Search address, client, supplier…" aria-label="Search jobs">
+        </div>
+        <div class="tabs job-filter" role="tablist" aria-label="Filter jobs">
+          <button role="tab" type="button" class="tab" aria-selected="true" data-jobfilter="open">Open</button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-jobfilter="attention">Needs reply <span class="count" id="jf-attention"></span></button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-jobfilter="unpaid">Completed · Unpaid <span class="count" id="jf-unpaid"></span></button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-jobfilter="paid">Paid</button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-jobfilter="all">All</button>
+        </div>
+        <div class="jobs-list" id="admin-jobs-list"></div>
+        <p class="empty" id="admin-jobs-empty" hidden>No jobs here.</p>
       </div>
     </section>
 

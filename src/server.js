@@ -11,6 +11,7 @@ const invoices = require('./invoices');
 const stripe = require('./stripe');
 const push = require('./push');
 const terms = require('./terms');
+const jobs = require('./jobs');
 const termsPages = require('./terms-pages');
 
 const app = express();
@@ -60,7 +61,10 @@ app.use(auth.loadSession);
 
 // State-changing API calls must be JSON: browsers can't send cross-site JSON
 // without a CORS preflight, which (with SameSite cookies) blocks CSRF.
+// Supplier job photos are uploaded as raw image bytes; image content types also require a CORS preflight.
+const PHOTO_UPLOAD = /^\/supplier\/jobs\/\d+\/photos$/;
 app.use('/api', (req, res, next) => {
+  if (req.method === 'POST' && PHOTO_UPLOAD.test(req.path) && req.is(['image/jpeg', 'image/png', 'image/webp'])) return next();
   if (req.method !== 'GET' && !req.is('application/json')) {
     return res.status(415).json({ error: 'Expected a JSON request.' });
   }
@@ -208,7 +212,7 @@ app.post('/api/password', auth.requireClientApi, (req, res) => {
 
 app.get('/api/orders', auth.requireClientApi, requireTerms, (req, res) => {
   const orders = db.prepare(`
-    SELECT order_number, service_date, service_type, plan, location, status, amount_cents, notes
+    SELECT order_number, service_date, service_time, service_type, plan, location, status, amount_cents, notes
     FROM orders WHERE client_id = ?
     ORDER BY service_date DESC, id DESC
   `).all(req.client.id);
@@ -325,6 +329,7 @@ app.post('/api/inquiries', (req, res) => {
 });
 
 app.use('/api/admin', admin.router);
+app.use('/api/supplier', jobs.supplierRouter);
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -355,6 +360,12 @@ app.get('/admin/agreements/:id', (req, res) => {
   const record = terms.getRecord(Number(req.params.id));
   if (!record) return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
   res.type('html').send(termsPages.recordPage(record));
+});
+
+// Supplier portal: job requests, photos and completion.
+app.get('/supplier', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(PUBLIC_DIR, jobs.isSupplier(req) ? 'supplier.html' : 'supplier-login.html'));
 });
 
 app.get('/signup', (req, res) => {

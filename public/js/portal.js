@@ -119,7 +119,8 @@ function renderOrders() {
       o.notes ? el('span', { class: 'note' }, o.notes) : null));
 
     tbody.append(el('tr', { class: `status-${o.status}` },
-      el('td', { 'data-label': 'Date' }, el('time', { datetime: o.service_date }, fmtDate(o.service_date))),
+      el('td', { 'data-label': 'Date' }, el('time', { datetime: o.service_date }, fmtDate(o.service_date)),
+        o.service_time ? el('span', { class: 'sub' }, new Date(2000, 0, 1, ...o.service_time.split(':').map(Number)).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })) : null),
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
       service,
       el('td', { 'data-label': 'Location' }, o.location || '—'),

@@ -291,6 +291,18 @@ function sendAccountDeclinedEmail(client, reason) {
   return track(sendEmail({ to: [client.email], replyTo: config().to[0], subject: 'Your A+ Cleaning Solutions account request', text, html }));
 }
 
+// Short notice email used for supplier job updates (new job, replies, completions).
+// `to` defaults to the business inbox; `lines` are plain sentences; `link` is an optional [label, url].
+function sendNotice({ to, replyTo, subject, lines, link }) {
+  const text = [...lines, ...(link ? ['', `${link[0]}: ${link[1]}`] : [])].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      ${lines.map((l) => (l ? `<p style="margin:0 0 8px;white-space:pre-wrap">${escapeHtml(l)}</p>` : '')).join('')}
+      ${link ? `<p><a href="${escapeHtml(link[1])}" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">${escapeHtml(link[0])}</a></p>` : ''}
+    </div>`;
+  return track(sendEmail({ ...(to ? { to } : {}), replyTo, subject, text, html }));
+}
+
 function emailStatus() {
   const { apiKey, to, from } = config();
   return { keySet: Boolean(apiKey), to, from, last: { ...lastResult } };
@@ -298,5 +310,5 @@ function emailStatus() {
 
 module.exports = {
   sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, sendDeclineEmail, emailStatus, buildInquiryEmail, formatService,
-  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail,
+  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail, sendNotice,
 };

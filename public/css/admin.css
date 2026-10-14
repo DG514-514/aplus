@@ -124,3 +124,5 @@ option.add-new { font-weight: 700; }
 .pending-intro { margin: -4px 0 14px; }
 .pending-card .row-actions { gap: 10px; }
 .count.count-alert { background: var(--amber-bg); color: var(--amber); }
+.order-service-row { grid-template-columns: 320px 1fr 130px; }
+@media (max-width: 760px) { .order-service-row { grid-template-columns: 1fr; } }

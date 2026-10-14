@@ -13,6 +13,7 @@ const stripe = require('./stripe');
 const push = require('./push');
 const terms = require('./terms');
 const assistant = require('./assistant');
+const jobs = require('./jobs');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -93,6 +94,9 @@ router.use(requireAdmin);
 // Ace, the owner's voice assistant.
 router.use('/assistant', assistant.router);
 
+// Supplier job requests, supplier payments and supplier portal logins.
+jobs.registerAdminRoutes(router);
+
 router.get('/overview', (_req, res) => {
   const clients = db.prepare(`
     SELECT c.id, c.email, c.name, c.phone, c.residence, c.room, c.created_at,
@@ -105,7 +109,7 @@ router.get('/overview', (_req, res) => {
     ORDER BY c.name COLLATE NOCASE
   `).all(terms.version);
   const orders = db.prepare(`
-    SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_type,
+    SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_time, o.service_type,
            o.plan, o.location, o.status, o.amount_cents, o.notes
     FROM orders o JOIN clients c ON c.id = o.client_id
     ORDER BY o.service_date DESC, o.id DESC
@@ -215,6 +219,7 @@ router.delete('/clients/:id', (req, res) => {
 function readOrder(b) {
   const order = {
     service_date: str(b.date, 10),
+    service_time: /^\d{2}:\d{2}$/.test(b.time || '') ? b.time : null,
     service_type: str(b.service, 120),
     plan: str(b.plan, 40),
     location: orNull(str(b.location, 160)),
@@ -239,9 +244,9 @@ router.post('/orders', (req, res) => {
     || [client.residence, client.room && `Rm ${client.room}`].filter(Boolean).join(', ') || null;
   const orderNumber = db.nextOrderNumber();
   db.prepare(`
-    INSERT INTO orders (client_id, order_number, service_date, service_type, plan, location, status, amount_cents, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(client.id, orderNumber, order.service_date, order.service_type, order.plan, order.location,
+    INSERT INTO orders (client_id, order_number, service_date, service_time, service_type, plan, location, status, amount_cents, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(client.id, orderNumber, order.service_date, order.service_time, order.service_type, order.plan, order.location,
     order.status, order.amount_cents, order.notes);
   res.status(201).json({ orderNumber });
 });
@@ -261,9 +266,9 @@ router.patch('/orders/:id', (req, res) => {
   const { order, error } = readOrder(req.body || {});
   if (error) return res.status(400).json({ error });
   db.prepare(`
-    UPDATE orders SET service_date = ?, service_type = ?, plan = ?, location = ?, status = ?, amount_cents = ?, notes = ?
+    UPDATE orders SET service_date = ?, service_time = ?, service_type = ?, plan = ?, location = ?, status = ?, amount_cents = ?, notes = ?
     WHERE id = ?
-  `).run(order.service_date, order.service_type, order.plan, order.location, order.status,
+  `).run(order.service_date, order.service_time, order.service_type, order.plan, order.location, order.status,
     order.amount_cents, order.notes, id);
   res.json({ ok: true });
 });
@@ -340,9 +345,10 @@ router.post('/invoices/:id/void', (req, res) => {
 
 function listCleaners() {
   const services = db.prepare('SELECT cleaner_id, service, cost_cents, unit FROM cleaner_services ORDER BY id').all();
-  return db.prepare('SELECT * FROM cleaners ORDER BY active DESC, name COLLATE NOCASE').all().map((c) => ({
+  return db.prepare('SELECT * FROM cleaners ORDER BY active DESC, name COLLATE NOCASE').all().map(({ password_hash, ...c }) => ({
     ...c,
     active: Boolean(c.active),
+    portal: Boolean(password_hash), // never send the hash itself
     services: services.filter((s) => s.cleaner_id === c.id).map(({ cleaner_id, ...s }) => s),
   }));
 }
@@ -417,6 +423,9 @@ router.put('/cleaners/:id', (req, res) => {
 });
 
 router.delete('/cleaners/:id', (req, res) => {
+  if (jobs.jobCountForCleaner(Number(req.params.id))) {
+    return res.status(409).json({ error: 'This supplier has jobs on record, which are kept for payment history. Set them to Inactive instead.' });
+  }
   const result = db.prepare('DELETE FROM cleaners WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Cleaner not found.' });
   res.json({ ok: true });

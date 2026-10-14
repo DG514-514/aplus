@@ -71,6 +71,8 @@ async function refresh() {
   renderInvoices();
   renderCleaners();
   renderPaymentsStatus();
+  // Lets other dashboard scripts (Jobs) refresh their client/supplier dropdowns.
+  document.dispatchEvent(new Event('admin:data'));
 }
 
 /* ---------- Tabs ---------- */
@@ -172,7 +174,7 @@ function renderOrders() {
     }
 
     tbody.append(el('tr', {},
-      el('td', { 'data-label': 'Date' }, el('time', {}, fmtDate(o.service_date))),
+      el('td', { 'data-label': 'Date' }, el('time', {}, fmtDate(o.service_date)), o.service_time ? el('span', { class: 'sub' }, fmtClock(o.service_time)) : null),
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
       el('td', { 'data-label': 'Client' }, o.client_name),
       el('td', { 'data-label': 'Service' }, el('div', {},
@@ -185,10 +187,39 @@ function renderOrders() {
   }
 }
 
+// The order form uses the same service presets as invoices: picking one fills the description and price.
+const fmtClock = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }); };
+
+function fillOrderServicePicker() {
+  const pick = $('o-service-pick');
+  if (pick.options.length) return;
+  pick.replaceChildren(el('option', { value: '' }, 'Choose a service…'),
+    ...SERVICES.map((s) => el('option', { value: s.id }, s.name)), el('option', { value: 'custom' }, 'Custom service…'));
+  pick.addEventListener('change', () => {
+    const service = SERVICES.find((s) => s.id === pick.value);
+    if (service) {
+      $('o-service').value = service.name;
+      $('o-amount').value = service.price.toFixed(2);
+    } else if (pick.value === 'custom') {
+      $('o-service').value = '';
+      $('o-service').focus();
+    }
+  });
+}
+
+// Standard service matching a client's (or quote request's) bedrooms/bathrooms, if any.
+function serviceForRooms(src) {
+  if (!src) return null;
+  if (src.bedrooms === 'Studio') return SERVICES.find((s) => s.id === 'studio');
+  return SERVICES.find((s) => s.bedrooms && s.bedrooms === src.bedrooms && s.bathrooms === src.bathrooms) || null;
+}
+
 function resetOrderForm() {
   const form = $('order-form');
   form.reset();
   form.plan.value = 'Bi-Weekly';
+  fillOrderServicePicker();
+  $('o-service-pick').value = '';
   state.editingOrder = null;
   $('order-form-title').textContent = 'Add an order';
   $('order-submit').textContent = 'Add Order';
@@ -203,6 +234,9 @@ function editOrder(o) {
   form.clientId.value = String(o.client_id);
   form.clientId.disabled = true;
   form.date.value = o.service_date;
+  form.time.value = o.service_time || '';
+  fillOrderServicePicker();
+  $('o-service-pick').value = SERVICES.find((s) => s.name === o.service_type)?.id || 'custom';
   form.service.value = o.service_type;
   form.plan.value = o.plan;
   form.amount.value = (o.amount_cents / 100).toFixed(2);
@@ -354,7 +388,14 @@ function newOrderFor(c) {
   resetOrderForm();
   showView('orders');
   $('o-client').value = String(c.id);
-  $('o-date').focus();
+  // Same pre-fill as the invoice form: pick the standard service for the client's unit size.
+  const match = serviceForRooms(c);
+  if (match) {
+    $('o-service-pick').value = match.id;
+    $('o-service-pick').dispatchEvent(new Event('change'));
+  }
+  $('order-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('o-date').focus({ preventScroll: true });
 }
 
 async function resetPassword(c) {
@@ -643,6 +684,12 @@ function openInvoiceFor(client, inquiry = null) {
   showView('invoices');
   $('i-client').value = String(client.id);
   state.invoiceInquiry = inquiry;
+  if (!inquiry && serviceForRooms(client)) {
+    const row = $('invoice-items').querySelector('.item-row');
+    const match = serviceForRooms(client);
+    row.querySelector('.item-service').value = match.id;
+    applyService(row, match.id);
+  }
   if (inquiry) {
     const row = $('invoice-items').querySelector('.item-row');
     // Pre-pick the standard service matching the requested bedrooms/bathrooms, if there is one.
@@ -879,12 +926,32 @@ function renderCleaners() {
           c.company ? el('span', { class: 'sub' }, c.company) : null),
         el('div', { class: 'row-actions' },
           el('span', { class: `badge ${c.active ? 'badge-completed' : 'badge-cancelled'}` }, c.active ? 'Active' : 'Inactive'),
+          c.portal ? el('span', { class: 'badge badge-pending' }, 'Portal on') : null,
+          el('button', { type: 'button', class: 'link-btn', onclick: () => portalLogin(c) }, c.portal ? 'Reset Portal Password' : 'Create Portal Login'),
+          c.portal ? el('button', { type: 'button', class: 'link-btn', onclick: () => portalOff(c) }, 'Turn Off Portal') : null,
           el('button', { type: 'button', class: 'link-btn', onclick: () => editCleaner(c) }, 'Edit'),
           el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteCleaner(c) }, 'Delete'))),
       contact.children.length ? contact : null,
       c.services.length ? services : el('p', { class: 'sub' }, 'No services listed yet.'),
       c.notes ? el('p', { class: 'cleaner-notes' }, c.notes) : null));
   }
+}
+
+// Supplier portal logins: the supplier signs in at /supplier with their email and this password.
+async function portalLogin(c) {
+  if (!c.email) { toast('Add an email for this supplier first (Edit) — it’s their username.'); return; }
+  const password = window.prompt(`Password for ${c.name}'s supplier portal (min. 8 characters). Share it with them along with the link.`, generatePassword());
+  if (password == null) return;
+  try {
+    await api(`/cleaners/${c.id}/portal`, 'POST', { password });
+    await refresh();
+    window.prompt('Portal login ready. Copy these details and send them to the supplier:', `${location.origin}/supplier  ·  Email: ${c.email}  ·  Password: ${password}`);
+  } catch (err) { toast(err.message); }
+}
+
+async function portalOff(c) {
+  if (!window.confirm(`Turn off ${c.name}'s supplier portal? They won't be able to sign in until you create a new login.`)) return;
+  try { await api(`/cleaners/${c.id}/portal`, 'DELETE'); await refresh(); toast('Portal login turned off.'); } catch (err) { toast(err.message); }
 }
 
 /* ---------- Phone app & notifications ---------- */
@@ -986,7 +1053,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshPushUI();
   // Deep links from notifications, e.g. /admin#invoices
   const startView = location.hash.slice(1);
-  if (['orders', 'clients', 'invoices', 'cleaners', 'inquiries'].includes(startView)) showView(startView);
+  if (['orders', 'clients', 'jobs', 'invoices', 'cleaners', 'inquiries'].includes(startView)) showView(startView);
   $('invoice-form').addEventListener('submit', submitInvoice);
   for (const select of [$('o-client'), $('i-client')]) {
     select.addEventListener('change', () => {
@@ -1006,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('add-item').addEventListener('click', () => addItemRow().querySelector('.item-desc').focus());
   $('invoice-search').addEventListener('input', renderInvoices);
   resetInvoiceForm();
+  fillOrderServicePicker();
   resetCleanerForm();
   $('cleaner-form').addEventListener('submit', submitCleaner);
   $('cleaner-cancel').addEventListener('click', resetCleanerForm);

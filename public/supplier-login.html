@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Supplier Login | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#809678">
+    <link rel="apple-touch-icon" href="/icons/client-apple-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="A+ Cleaning">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <script src="/js/app.js" defer></script>
+  <script src="/js/login.js" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-layout">
+    <section class="auth-panel">
+      <a class="auth-logo" href="/"><img src="/img/logo.png" alt="A+ Cleaning Solutions — back to home" width="800" height="333"></a>
+      <div class="auth-form-wrap">
+        <h1 class="auth-title">Supplier login</h1>
+        <p class="auth-sub">Sign in to see your job requests from A+ Cleaning Solutions, upload photos and mark jobs complete.</p>
+
+        <form id="login-form" data-endpoint="/api/supplier/login" data-redirect="/supplier" novalidate>
+          <div class="alert alert-error" role="alert" hidden></div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" required>
+              <button type="button" class="reveal-pw" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">Sign In</button>
+        </form>
+
+        <p class="auth-help">
+          Need a login or forgot your password? Email
+          <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>
+          and we’ll set you up.
+        </p>
+      </div>
+      <a class="auth-back" href="/">← Back to website</a>
+    </section>
+
+    <aside class="auth-art" aria-hidden="true">
+      <div class="auth-art-inner">
+        <p class="auth-quote">Supplier<br><span>portal.</span></p>
+        <p>Your A+ job requests, photos and payments in one place.</p>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>
