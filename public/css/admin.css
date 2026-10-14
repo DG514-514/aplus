@@ -126,3 +126,34 @@ option.add-new { font-weight: 700; }
 .count.count-alert { background: var(--amber-bg); color: var(--amber); }
 .order-service-row { grid-template-columns: 320px 1fr 130px; }
 @media (max-width: 760px) { .order-service-row { grid-template-columns: 1fr; } }
+
+/* Client names open the client file */
+.client-link { background: none; border: 0; padding: 0; font: inherit; color: var(--forest); cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--sage-100); text-underline-offset: 3px; }
+.client-link.strong { font-weight: 700; }
+.client-link:hover { color: var(--sage-700); text-decoration-color: currentColor; }
+.invoiced-pill { border: 0; cursor: pointer; font-family: var(--font-head); font-weight: 700; font-size: .7rem; letter-spacing: .04em; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.invoiced-pill.due { background: var(--amber-bg); color: var(--amber); }
+.invoiced-pill.paid { background: var(--sage-100); color: var(--sage-700); }
+.invoice-order-note { margin: 0; padding: 10px 14px; border-radius: 8px; background: var(--sage-50); color: var(--sage-700); font-weight: 600; }
+.invoice-order-note[hidden] { display: none; }
+
+.client-file { width: min(980px, calc(100% - 24px)); max-height: calc(100dvh - 32px); padding: 0; }
+.client-file[open] { display: block; overflow: auto; }
+#client-file-body { padding: 28px 30px 30px; }
+.cf-close { position: sticky; top: 10px; float: right; margin: 10px 12px 0 0; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: #fff; font-size: 1.4rem; line-height: 1; cursor: pointer; z-index: 2; }
+.cf-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.cf-head h2 { margin: 0 0 4px; font-size: 1.5rem; }
+.cf-contact { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 4px; }
+.cf-contact a { color: var(--forest); font-weight: 600; }
+.cf-head .sub { color: var(--muted); margin: 0; }
+.cf-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+.cf-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
+@media (max-width: 700px) { .cf-stats { grid-template-columns: repeat(2, 1fr); } #client-file-body { padding: 20px 16px; } }
+.cf-stat { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 14px; display: grid; gap: 2px; }
+.cf-stat-label { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.cf-stat strong { font-family: var(--font-head); font-size: 1.3rem; color: var(--forest); }
+.cf-stat .sub { color: var(--muted); font-size: .82rem; }
+.cf-section { margin: 22px 0 8px; font-size: 1.05rem; }
+.cf-table { font-size: .93rem; }
+.cf-jobs { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.cf-jobs li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }

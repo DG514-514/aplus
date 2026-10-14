@@ -110,8 +110,10 @@ router.get('/overview', (_req, res) => {
   `).all(terms.version);
   const orders = db.prepare(`
     SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_time, o.service_type,
-           o.plan, o.location, o.status, o.amount_cents, o.notes
+           o.plan, o.location, o.status, o.amount_cents, o.notes,
+           i.invoice_number, i.status AS invoice_status
     FROM orders o JOIN clients c ON c.id = o.client_id
+    LEFT JOIN invoices i ON i.id = (SELECT MAX(id) FROM invoices WHERE order_id = o.id AND status != 'void')
     ORDER BY o.service_date DESC, o.id DESC
   `).all();
   const inquiries = db.prepare('SELECT * FROM inquiries ORDER BY id DESC').all();
@@ -305,9 +307,14 @@ router.post('/invoices', async (req, res) => {
   if (serviceTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(serviceTime)) return res.status(400).json({ error: 'Pick a valid service time.' });
   if (serviceTime && !serviceDate) return res.status(400).json({ error: 'Add a service date to go with the time.' });
   const inquiryId = Number(b.inquiryId) || null;
+  // Invoicing an order links the two, so the order shows it's been invoiced (and whether it's paid).
+  const orderId = Number(b.orderId) || null;
+  if (orderId && !db.prepare('SELECT 1 FROM orders WHERE id = ? AND client_id = ?').get(orderId, client.id)) {
+    return res.status(400).json({ error: 'That order belongs to a different client.' });
+  }
 
   const invoice = invoices.create({
-    clientId: client.id, items, dueDate, serviceDate, serviceTime, notes: str(b.notes, 1000), inquiryId,
+    clientId: client.id, items, dueDate, serviceDate, serviceTime, notes: str(b.notes, 1000), inquiryId, orderId,
   });
 
   let email = 'skipped';

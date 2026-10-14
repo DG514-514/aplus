@@ -195,6 +195,7 @@
         <p class="payments-status" id="payments-status"></p>
         <form id="invoice-form" class="form-grid admin-form" novalidate>
           <div class="alert alert-error" role="alert" hidden></div>
+          <p class="invoice-order-note full" id="invoice-order-note" hidden></p>
           <div class="field">
             <label for="i-client">Client</label>
             <select id="i-client" name="clientId" required></select>
@@ -426,6 +427,11 @@
       </div>
     </section>
   </main>
+
+  <dialog id="client-file" class="modal client-file" aria-labelledby="cf-title">
+    <button type="button" class="cf-close" id="cf-close" aria-label="Close client file">×</button>
+    <div id="client-file-body"></div>
+  </dialog>
 
   <dialog id="decline-dialog" class="modal" aria-labelledby="dc-title">
     <form id="decline-form" class="form-grid admin-form" novalidate>
