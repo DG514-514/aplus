@@ -1058,3 +1058,98 @@ test('new invoice numbers are random 8-digit numbers, never repeated', async () 
   const { invoices } = await (await fetch(`${base}/api/invoices`, { headers: { cookie } })).json();
   assert.equal(invoices.length, 5);
 });
+
+test('cleaner link: one job only, no login, supplier approves the submission', async () => {
+  const sent = [];
+  const realFetch = global.fetch;
+  process.env.RESEND_API_KEY = 'test-resend';
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) { sent.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
+    return realFetch(url, opts);
+  };
+  const del = (url, headers = {}) => fetch(base + url, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...headers }, body: '{}' });
+  const soon = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+  try {
+    const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };
+    await post('/api/admin/cleaners', { name: 'Rosa Diaz', company: 'Sparkle Co', email: 'rosa@sparkle.test', active: true, services: [] }, admin);
+    const { cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const rosa = cleaners.find((c) => c.email === 'rosa@sparkle.test');
+    await post(`/api/admin/cleaners/${rosa.id}/portal`, { password: 'rosa-portal-1' }, admin);
+    const sup = { cookie: (await post('/api/supplier/login', { email: 'rosa@sparkle.test', password: 'rosa-portal-1' })).headers.get('set-cookie').split(';')[0] };
+    const { id: jobId } = await (await post('/api/admin/jobs', { cleanerId: rosa.id, clientName: 'Secret Client', address: '5 Ocean Dr', bedrooms: '1', serviceDate: soon, pay: '95', instructions: 'Lockbox 1234' }, admin)).json();
+    const other = await (await post('/api/admin/jobs', { cleanerId: rosa.id, address: '9 Other Rd', serviceDate: soon, pay: '80' }, admin)).json();
+
+    // Link only after accepting; reused unless a new one is asked for.
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/cleaner-link`, {}, sup)).status, 409);
+    await post(`/api/supplier/jobs/${jobId}/accept`, {}, sup);
+    await post(`/api/supplier/jobs/${other.id}/accept`, {}, sup);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/cleaner-link`, {})).status, 401);
+    const first = await (await post(`/api/supplier/jobs/${jobId}/cleaner-link`, {}, sup)).json();
+    assert.match(first.path, /^\/c\/[A-Za-z0-9_-]{20,}$/);
+    assert.equal((await (await post(`/api/supplier/jobs/${jobId}/cleaner-link`, {}, sup)).json()).path, first.path);
+    const fresh = await (await post(`/api/supplier/jobs/${jobId}/cleaner-link?new=1`, {}, sup)).json();
+    assert.notEqual(fresh.path, first.path);
+    const oldToken = first.path.slice(3);
+    const token = fresh.path.slice(3);
+    assert.equal((await fetch(`${base}/api/cleaner/${oldToken}`)).status, 404);
+
+    // The page loads without a login and shows only this job — no pay, client or messages.
+    const page = await fetch(`${base}/c/${token}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get('x-robots-tag'), 'noindex');
+    const { job } = await (await fetch(`${base}/api/cleaner/${token}`)).json();
+    assert.equal(job.address, '5 Ocean Dr');
+    assert.equal(job.instructions, 'Lockbox 1234');
+    assert.equal(job.company, 'Sparkle Co');
+    for (const hidden of ['pay_cents', 'client_name', 'client_id', 'messages', 'id', 'cleaner_token', 'cleaner_id']) assert.equal(hidden in job, false, hidden);
+    assert.equal((await fetch(`${base}/api/cleaner/not-a-real-token-xxxxxxxx`)).status, 404);
+    assert.equal((await fetch(`${base}/api/supplier/jobs`, { headers: {} })).status, 401);
+
+    // Upload rules, then submit with a full name.
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
+    const upload = (kind, t = token) => fetch(`${base}/api/cleaner/${t}/photos?kind=${kind}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: jpeg });
+    assert.equal((await post(`/api/cleaner/${token}/submit`, { name: 'Luz Mora' })).status, 400);
+    const before = await (await upload('before')).json();
+    assert.equal((await upload('after')).status, 201);
+    const extra = await (await upload('after')).json();
+    assert.equal((await del(`/api/cleaner/${token}/photos/${extra.id}`)).status, 200);
+    assert.equal((await fetch(`${base}/api/cleaner/${token}/photos/${before.id}`)).status, 200);
+    assert.equal((await post(`/api/cleaner/${token}/submit`, { name: 'Luz' })).status, 400);
+    assert.equal((await post(`/api/cleaner/${token}/submit`, { name: ' Luz   Mora ' })).status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(sent.some((m) => m.to?.[0] === 'rosa@sparkle.test' && /Ready for review/.test(m.subject)));
+    assert.ok(sent.some((m) => /Cleaner photos in/.test(m.subject)));
+
+    // Locked after submitting; the owner and supplier see "ready for review".
+    assert.equal((await upload('after')).status, 409);
+    assert.equal((await del(`/api/cleaner/${token}/photos/${before.id}`)).status, 409);
+    let owner = await (await fetch(`${base}/api/admin/jobs`, { headers: admin })).json();
+    let ownerJob = owner.jobs.find((j) => j.id === jobId);
+    assert.equal(ownerJob.cleaner_signed_by, 'Luz Mora');
+    assert.equal(ownerJob.cleaner_name, 'Rosa Diaz');
+    assert.equal(ownerJob.photos.length, 2);
+
+    // Supplier sends it back, the cleaner can change photos, resubmits; then the supplier approves.
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/send-back`, {}, sup)).status, 200);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/send-back`, {}, sup)).status, 409);
+    assert.equal((await upload('after')).status, 201);
+    assert.equal((await post(`/api/cleaner/${token}/submit`, { name: 'Luz Mora' })).status, 200);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: 'Luz Mora' }, sup)).status, 200);
+    owner = await (await fetch(`${base}/api/admin/jobs`, { headers: admin })).json();
+    ownerJob = owner.jobs.find((j) => j.id === jobId);
+    assert.equal(ownerJob.status, 'completed');
+    assert.equal(ownerJob.completed_by, 'Luz Mora');
+    assert.equal(ownerJob.cleaner_token, null);
+    assert.equal((await fetch(`${base}/api/cleaner/${token}`)).status, 404);
+
+    // Turning a link off kills it; a token never opens another job.
+    const otherLink = await (await post(`/api/supplier/jobs/${other.id}/cleaner-link`, {}, sup)).json();
+    const otherToken = otherLink.path.slice(3);
+    assert.equal((await fetch(`${base}/api/cleaner/${otherToken}/photos/${before.id}`)).status, 404);
+    assert.equal((await del(`/api/supplier/jobs/${other.id}/cleaner-link`, sup)).status, 200);
+    assert.equal((await fetch(`${base}/api/cleaner/${otherToken}`)).status, 404);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+});

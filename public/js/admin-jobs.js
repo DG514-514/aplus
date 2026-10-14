@@ -176,7 +176,7 @@
   function renderJobs() {
     const q = $('job-search').value.trim().toLowerCase();
     const rows = jobsState.jobs.filter(FILTERS[jobsState.filter])
-      .filter((j) => !q || [j.job_number, j.address, j.unit, j.client_name, j.cleaner_name, j.cleaner_company, j.completed_by].join(' ').toLowerCase().includes(q));
+      .filter((j) => !q || [j.job_number, j.address, j.unit, j.client_name, j.cleaner_name, j.cleaner_company, j.completed_by, j.cleaner_signed_by].join(' ').toLowerCase().includes(q));
     if (jobsState.filter === 'open') rows.sort((a, b) => a.service_date.localeCompare(b.service_date));
     $('admin-jobs-list').replaceChildren(...rows.map(card));
     $('admin-jobs-empty').hidden = rows.length > 0;
@@ -204,6 +204,11 @@
       details(j, 'owner'),
       j.instructions ? el('p', { class: 'job-instructions' }, j.instructions) : null);
 
+    if (j.status === 'accepted' && (j.cleaner_submitted_at || j.cleaner_token)) {
+      append(node, el('p', { class: 'job-done' }, ...(j.cleaner_submitted_at
+        ? ['📷 Cleaner ', el('strong', {}, j.cleaner_signed_by), ` submitted photos ${fmtStamp(j.cleaner_submitted_at)} — waiting for the supplier to approve.`]
+        : ['🔗 Supplier sent a cleaner photo link — photos appear below as they’re uploaded.'])));
+    }
     if (j.status === 'completed') {
       append(node, 
         el('p', { class: 'job-done' }, `✓ Completed ${fmtStamp(j.completed_at)} by `, el('strong', {}, j.completed_by)),

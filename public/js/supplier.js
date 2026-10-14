@@ -80,7 +80,7 @@
       append(node, el('div', { class: 'job-actions' }, accept, el('span', { class: 'sub' }, 'or reply below with a comment or question')));
     }
 
-    if (j.status === 'accepted') append(node, completionForm(j));
+    if (j.status === 'accepted') append(node, ...(j.cleaner_submitted_at ? [reviewBox(j)] : [cleanerLinkBox(j), completionForm(j)]));
 
     if (j.status === 'completed') {
       append(node, 
@@ -98,6 +98,59 @@
       }, { open: j.status !== 'completed' }));
     }
     return node;
+  }
+
+  // Private one-job link for the cleaner: they upload photos and their name without a login.
+  function cleanerLinkBox(j) {
+    const box = el('div', { class: 'job-link' }, el('h4', {}, '🔗 Cleaner link'));
+    const url = j.cleaner_token ? `${window.location.origin}/c/${j.cleaner_token}` : null;
+    const act = async (path, method, done) => {
+      try { const data = await api(path, method); if (done) await done(data); await reload(); } catch (err) { toast(err.message); }
+    };
+    const copy = async (text) => {
+      try { await navigator.clipboard.writeText(text); toast('Link copied — send it to your cleaner.'); } catch { window.prompt('Copy this link:', text); }
+    };
+    if (!url) {
+      append(box,
+        el('p', { class: 'sub' }, 'Send your cleaner a private link for this job only. They add before & after photos and their name — no login, and they can’t see other jobs or pay.'),
+        el('div', { class: 'job-link-actions' }, el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => act(`/jobs/${j.id}/cleaner-link`, 'POST', (d) => copy(d.url)) }, 'Get Cleaner Link')));
+      return box;
+    }
+    const message = `A+ Cleaning job ${j.job_number}: please upload before & after photos here: ${url}`;
+    append(box,
+      el('p', { class: 'sub' }, 'Works for this job only, until it’s completed. You’ll get an email when photos are submitted.'),
+      el('div', { class: 'job-link-url' }, url),
+      el('div', { class: 'job-link-actions' },
+        el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => copy(url) }, 'Copy'),
+        navigator.share ? el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => navigator.share({ title: `Job ${j.job_number}`, text: message }).catch(() => {}) }, 'Share') : null,
+        el('a', { class: 'btn btn-outline btn-sm', href: `sms:?&body=${encodeURIComponent(message)}` }, 'Text'),
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { if (window.confirm('Make a new link? The old one stops working.')) act(`/jobs/${j.id}/cleaner-link?new=1`, 'POST', (d) => copy(d.url)); } }, 'New Link'),
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { if (window.confirm('Turn off this link?')) act(`/jobs/${j.id}/cleaner-link`, 'DELETE', () => toast('Link turned off.')); } }, 'Turn Off')));
+    return box;
+  }
+
+  // The cleaner submitted photos: approve to complete the job, or send it back for changes.
+  function reviewBox(j) {
+    const approve = el('button', { type: 'button', class: 'btn btn-primary' }, 'Approve & Complete');
+    approve.addEventListener('click', async () => {
+      approve.disabled = true;
+      try {
+        await api(`/jobs/${j.id}/complete`, 'POST', { completedBy: j.cleaner_signed_by, notes: '' });
+        toast(`Job ${j.job_number} approved and marked complete.`);
+        filter = 'completed'; selectTab();
+        await reload();
+      } catch (err) { toast(err.message); approve.disabled = false; }
+    });
+    const back = el('button', { type: 'button', class: 'btn btn-outline' }, 'Send Back to Cleaner');
+    back.addEventListener('click', async () => {
+      if (!window.confirm('Send back? The cleaner can change photos and submit again with the same link.')) return;
+      try { await api(`/jobs/${j.id}/send-back`, 'POST'); toast('Sent back — the cleaner’s link is open again.'); await reload(); } catch (err) { toast(err.message); }
+    });
+    return el('div', { class: 'job-review' },
+      el('h4', {}, 'Ready for review'),
+      el('p', { class: 'sub' }, el('strong', {}, j.cleaner_signed_by), ` submitted photos ${fmtStamp(j.cleaner_submitted_at)} — check them, then approve.`),
+      photos(j, (p) => `/api/supplier/photos/${p.id}`),
+      el('div', { class: 'job-link-actions' }, approve, back));
   }
 
   function completionForm(j) {

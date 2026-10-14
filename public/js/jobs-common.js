@@ -38,7 +38,7 @@ window.JobsUI = (() => {
       if (viewer === 'owner') return j.awaiting_owner ? ['badge-reply', 'Supplier replied'] : ['badge-scheduled', 'Awaiting supplier'];
       return ['badge-scheduled', 'New request'];
     }
-    if (j.status === 'accepted') return ['badge-pending', 'Pending completion'];
+    if (j.status === 'accepted') return j.cleaner_submitted_at ? ['badge-reply', 'Ready for review'] : ['badge-pending', 'Pending completion'];
     if (j.status === 'completed') return j.supplier_paid_at ? ['badge-completed', 'Completed · Paid'] : ['badge-unpaid', 'Completed · Unpaid'];
     return ['badge-cancelled', 'Cancelled'];
   }
