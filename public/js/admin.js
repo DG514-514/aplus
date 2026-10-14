@@ -444,6 +444,16 @@ function roomSummary(inq) {
   return [inq.bedrooms && `${inq.bedrooms} bed`, inq.bathrooms && `${inq.bathrooms} bath`].filter(Boolean).join(' / ');
 }
 
+// "Fri, Oct 16, 2026 at 2:30 p.m." from a quote request's preferred date/time.
+function requestedWhen(inq) {
+  const day = inq.requested_date
+    ? new Date(`${inq.requested_date}T12:00:00`).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Any day';
+  if (!inq.requested_time) return day;
+  const [h, m] = inq.requested_time.split(':').map(Number);
+  return `${day} at ${new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 function renderInquiries() {
   const list = $('inquiries-list');
   list.replaceChildren();
@@ -459,6 +469,7 @@ function renderInquiries() {
         el('a', { href: `mailto:${inq.email}` }, inq.email),
         inq.phone ? ` · ${inq.phone}` : null),
       el('p', { class: 'sub' }, [inq.plan, inq.residence, roomSummary(inq)].filter(Boolean).join(' · ') || ''),
+      inq.requested_date || inq.requested_time ? el('p', { class: 'inquiry-when' }, '📅 Requested: ', el('strong', {}, requestedWhen(inq))) : null,
       inq.message ? el('p', { class: 'inquiry-msg' }, inq.message) : null,
       inq.declined_at
         ? el('p', { class: 'decline-note' }, el('strong', {}, 'Reason given: '), inq.decline_reason || '(no reason recorded)')
@@ -691,6 +702,8 @@ function openInvoiceFor(client, inquiry = null) {
     applyService(row, match.id);
   }
   if (inquiry) {
+    if (inquiry.requested_date) $('i-service-date').value = inquiry.requested_date;
+    if (inquiry.requested_time) $('i-service-time').value = inquiry.requested_time;
     const row = $('invoice-items').querySelector('.item-row');
     // Pre-pick the standard service matching the requested bedrooms/bathrooms, if there is one.
     const match = SERVICES.find((s) => s.bedrooms && s.bedrooms === inquiry.bedrooms && s.bathrooms === inquiry.bathrooms);

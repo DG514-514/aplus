@@ -53,6 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (form) {
     const alertBox = form.querySelector('.alert');
     const submit = form.querySelector('button[type="submit"]');
+    // No booking dates in the past.
+    const dateInput = form.querySelector('#inq-date');
+    if (dateInput) {
+      const now = new Date();
+      dateInput.min = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
     const show = (type, message) => {
       alertBox.className = `alert alert-${type}`;
       alertBox.textContent = message;
