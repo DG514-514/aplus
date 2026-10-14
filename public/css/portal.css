@@ -6,7 +6,7 @@
 /* ---------- Login ---------- */
 
 .auth-layout { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 520px) 1fr; }
-.auth-panel { display: flex; flex-direction: column; padding: 40px 56px; background: var(--cream); }
+.auth-panel { position: relative; display: flex; flex-direction: column; padding: 40px 56px; background: var(--cream); }
 .auth-logo img { height: 52px; width: auto; }
 .auth-form-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; max-width: 400px; width: 100%; padding: 48px 0; }
 .auth-title { font-size: 2rem; text-transform: none; letter-spacing: -.01em; margin-bottom: 6px; }

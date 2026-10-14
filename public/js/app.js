@@ -34,13 +34,14 @@
       dialog = document.createElement('dialog');
       dialog.id = 'ios-install-dialog';
       dialog.className = 'app-dialog';
+      const T = (s) => (window.I18N ? window.I18N.t(s) : s);
       dialog.innerHTML = `
-        <h2>Add to your Home Screen</h2>
+        <h2>${T('Add to your Home Screen')}</h2>
         <p class="app-dialog-reason"></p>
         <ol>
-          <li>Tap the <strong>Share</strong> button <span aria-hidden="true">⬆️</span> at the bottom (or top) of Safari.</li>
-          <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
-          <li>Tap <strong>Add</strong>. Then open the app from your Home Screen.</li>
+          <li>${T('Tap the <strong>Share</strong> button <span aria-hidden="true">⬆️</span> at the bottom (or top) of Safari.')}</li>
+          <li>${T('Scroll down and tap <strong>Add to Home Screen</strong>.')}</li>
+          <li>${T('Tap <strong>Add</strong>. Then open the app from your Home Screen.')}</li>
         </ol>
         <button type="button" class="btn btn-primary btn-block">Got it</button>`;
       dialog.querySelector('button').addEventListener('click', () => dialog.close());
