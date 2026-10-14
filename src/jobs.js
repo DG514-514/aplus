@@ -68,6 +68,12 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(cleaners)').all().some((c) => c.name === 'password_hash')) {
   db.exec('ALTER TABLE cleaners ADD COLUMN password_hash TEXT');
 }
+// One-job cleaner links: the supplier texts a private link to the cleaner, who uploads photos and their name
+// without a login. Submitting marks the job "ready for review" until the supplier approves it.
+for (const column of ['cleaner_token', 'cleaner_token_at', 'cleaner_submitted_at', 'cleaner_signed_by']) {
+  if (!db.prepare('PRAGMA table_info(jobs)').all().some((c) => c.name === column)) db.exec(`ALTER TABLE jobs ADD COLUMN ${column} TEXT`);
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_cleaner_token ON jobs(cleaner_token)');
 
 const PHOTO_DIR = path.join(db.dataDir, 'uploads', 'jobs');
 const COOKIE = 'aplus_sup';
@@ -333,7 +339,7 @@ supplierRouter.post('/jobs/:id/complete', (req, res) => {
   if (completedBy.split(' ').filter(Boolean).length < 2) return res.status(400).json({ error: 'Enter the full name (first and last) of the employee who completed the job.' });
   const counts = Object.fromEntries(db.prepare('SELECT kind, COUNT(*) AS n FROM job_photos WHERE job_id = ? GROUP BY kind').all(job.id).map((r) => [r.kind, r.n]));
   if (!counts.before || !counts.after) return res.status(400).json({ error: 'Upload at least one before photo and one after photo first.' });
-  db.prepare("UPDATE jobs SET status = 'completed', completed_at = datetime('now'), completed_by = ?, completion_notes = ? WHERE id = ?")
+  db.prepare("UPDATE jobs SET status = 'completed', completed_at = datetime('now'), completed_by = ?, completion_notes = ?, cleaner_token = NULL WHERE id = ?")
     .run(completedBy, str(req.body?.notes, 2000) || null, job.id);
   res.json({ ok: true });
   tellOwner(job, 'Job completed', [
@@ -341,6 +347,36 @@ supplierRouter.post('/jobs/:id/complete', (req, res) => {
     `${job.address} · completed by ${completedBy}`,
     `${counts.before} before / ${counts.after} after photos uploaded. Amount owed to supplier: ${dollars(job.pay_cents)}.`,
   ]);
+});
+
+// Cleaner link for an accepted job: create (or replace with ?new=1), turn off, or send a submission back.
+const cleanerUrl = (token) => `${siteUrl() || ''}/c/${token}`;
+
+supplierRouter.post('/jobs/:id/cleaner-link', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  if (job.status !== 'accepted') return res.status(409).json({ error: 'Accept the job first — the cleaner link works until the job is completed.' });
+  let token = job.cleaner_token;
+  if (!token || req.query.new === '1') {
+    token = crypto.randomBytes(18).toString('base64url');
+    db.prepare("UPDATE jobs SET cleaner_token = ?, cleaner_token_at = datetime('now') WHERE id = ?").run(token, job.id);
+  }
+  res.json({ url: cleanerUrl(token), path: `/c/${token}` });
+});
+
+supplierRouter.delete('/jobs/:id/cleaner-link', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  db.prepare('UPDATE jobs SET cleaner_token = NULL WHERE id = ?').run(job.id);
+  res.json({ ok: true });
+});
+
+supplierRouter.post('/jobs/:id/send-back', (req, res) => {
+  const job = ownJob(req, res);
+  if (!job) return;
+  if (job.status !== 'accepted' || !job.cleaner_submitted_at) return res.status(409).json({ error: 'There’s no cleaner submission to send back.' });
+  db.prepare('UPDATE jobs SET cleaner_submitted_at = NULL WHERE id = ?').run(job.id);
+  res.json({ ok: true });
 });
 
 supplierRouter.get('/photos/:id', (req, res) => {
@@ -399,7 +435,7 @@ function registerAdminRoutes(router) {
       UPDATE jobs SET cleaner_id = :cleaner_id, client_id = :client_id, client_name = :client_name, address = :address, unit = :unit,
         bedrooms = :bedrooms, bathrooms = :bathrooms, service = :service, service_date = :service_date, time_start = :time_start,
         time_end = :time_end, instructions = :instructions, pay_cents = :pay_cents
-        ${reassigned ? ", status = 'requested', accepted_at = NULL" : ''}
+        ${reassigned ? ", status = 'requested', accepted_at = NULL, cleaner_token = NULL, cleaner_submitted_at = NULL" : ''}
       WHERE id = :id
     `).run({ ...job, id: existing.id });
     const saved = getJob(existing.id);
@@ -423,7 +459,7 @@ function registerAdminRoutes(router) {
     const job = getJob(Number(req.params.id));
     if (!job) return res.status(404).json({ error: 'Job not found.' });
     if (job.status === 'completed') return res.status(409).json({ error: 'Completed jobs can’t be cancelled.' });
-    db.prepare("UPDATE jobs SET status = 'cancelled' WHERE id = ?").run(job.id);
+    db.prepare("UPDATE jobs SET status = 'cancelled', cleaner_token = NULL WHERE id = ?").run(job.id);
     res.json({ ok: true });
     if (job.status !== 'cancelled') tellSupplier(job, 'Job cancelled', [`Job ${jobNumber(job.id)} on ${job.service_date} at ${job.address} has been cancelled. Sorry for any inconvenience.`]);
   });
@@ -488,6 +524,101 @@ function registerAdminRoutes(router) {
   });
 }
 
+/* ---------- Cleaner API (/api/cleaner/:token) — no login, one job only ---------- */
+
+const cleanerRouter = express.Router();
+const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
+
+// The link only works while the job is accepted and not long past its date.
+function jobForToken(req, res) {
+  const token = req.params.token;
+  const job = TOKEN_RE.test(token || '')
+    ? db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs j JOIN cleaners c ON c.id = j.cleaner_id
+        WHERE j.cleaner_token = ? AND j.status = 'accepted' AND j.service_date >= date('now', '-3 days')`).get(token)
+    : null;
+  if (!job) {
+    res.status(404).json({ error: 'This link has expired or been turned off. Ask your supervisor for a new one.' });
+    return null;
+  }
+  return job;
+}
+
+cleanerRouter.get('/:token', (req, res) => {
+  const job = jobForToken(req, res);
+  if (!job) return;
+  const photos = db.prepare('SELECT id, kind FROM job_photos WHERE job_id = ? ORDER BY id').all(job.id);
+  // Only what the cleaner needs on site: no pay, client contact, messages or other jobs.
+  res.json({
+    job: {
+      job_number: jobNumber(job.id), company: job.cleaner_company || job.cleaner_name,
+      address: job.address, unit: job.unit, bedrooms: job.bedrooms, bathrooms: job.bathrooms, service: job.service,
+      service_date: job.service_date, time_start: job.time_start, time_end: job.time_end, instructions: job.instructions,
+      submitted_at: job.cleaner_submitted_at, submitted_by: job.cleaner_signed_by, photos,
+    },
+  });
+});
+
+cleanerRouter.post('/:token/photos', rawImage, (req, res) => {
+  const job = jobForToken(req, res);
+  if (!job) return;
+  if (job.cleaner_submitted_at) return res.status(409).json({ error: 'Already submitted — ask your supervisor to send it back if you need to change photos.' });
+  const kind = req.query.kind;
+  if (!['before', 'after'].includes(kind)) return res.status(400).json({ error: 'Say whether this is a before or after photo.' });
+  const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  const type = sniffImage(buf);
+  if (!type) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP photo.' });
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM job_photos WHERE job_id = ?').get(job.id);
+  if (n >= MAX_PHOTOS_PER_JOB) return res.status(400).json({ error: `Up to ${MAX_PHOTOS_PER_JOB} photos per job.` });
+  fs.mkdirSync(PHOTO_DIR, { recursive: true });
+  const file = `${job.id}-${kind}-${crypto.randomBytes(8).toString('hex')}.${type[1]}`;
+  fs.writeFileSync(path.join(PHOTO_DIR, file), buf);
+  const { lastInsertRowid } = db.prepare('INSERT INTO job_photos (job_id, kind, file, mime, bytes) VALUES (?, ?, ?, ?, ?)')
+    .run(job.id, kind, file, type[0], buf.length);
+  res.status(201).json({ id: Number(lastInsertRowid), kind });
+});
+
+cleanerRouter.delete('/:token/photos/:photoId', (req, res) => {
+  const job = jobForToken(req, res);
+  if (!job) return;
+  if (job.cleaner_submitted_at) return res.status(409).json({ error: 'Already submitted.' });
+  const photo = db.prepare('SELECT * FROM job_photos WHERE id = ? AND job_id = ?').get(Number(req.params.photoId), job.id);
+  if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+  db.prepare('DELETE FROM job_photos WHERE id = ?').run(photo.id);
+  fs.rm(path.join(PHOTO_DIR, path.basename(photo.file)), { force: true }, () => {});
+  res.json({ ok: true });
+});
+
+cleanerRouter.get('/:token/photos/:photoId', (req, res) => {
+  const job = jobForToken(req, res);
+  if (!job) return;
+  const photo = db.prepare('SELECT * FROM job_photos WHERE id = ? AND job_id = ?').get(Number(req.params.photoId), job.id);
+  if (!photo) return res.status(404).end();
+  return sendPhoto(res, photo);
+});
+
+cleanerRouter.post('/:token/submit', (req, res) => {
+  const job = jobForToken(req, res);
+  if (!job) return;
+  if (job.cleaner_submitted_at) return res.status(409).json({ error: 'Already submitted. Thank you!' });
+  const name = str(req.body?.name, 120).replace(/\s+/g, ' ');
+  if (name.split(' ').filter(Boolean).length < 2) return res.status(400).json({ error: 'Enter your full name (first and last).' });
+  const counts = Object.fromEntries(db.prepare('SELECT kind, COUNT(*) AS n FROM job_photos WHERE job_id = ? GROUP BY kind').all(job.id).map((r) => [r.kind, r.n]));
+  if (!counts.before || !counts.after) return res.status(400).json({ error: 'Add at least one before photo and one after photo.' });
+  db.prepare("UPDATE jobs SET cleaner_submitted_at = datetime('now'), cleaner_signed_by = ? WHERE id = ?").run(name, job.id);
+  res.json({ ok: true });
+  tellOwner(job, 'Cleaner photos in', [`${name} uploaded photos for job ${jobNumber(job.id)} (${job.address}) — waiting for ${job.cleaner_company || job.cleaner_name} to approve.`]);
+  // The supplier reviews and approves it in their portal.
+  const supplier = db.prepare('SELECT email FROM cleaners WHERE id = ?').get(job.cleaner_id);
+  if (supplier?.email) {
+    notify.sendNotice({
+      to: [supplier.email],
+      subject: `Ready for review: ${jobNumber(job.id)} · ${job.address}`,
+      lines: [`${name} submitted job ${jobNumber(job.id)} (${job.address}) with ${counts.before} before and ${counts.after} after photos.`, 'Review the photos and tap Approve & Complete.'],
+      link: siteUrl() ? ['Review job', `${siteUrl()}/supplier`] : null,
+    }).catch(warn('Cleaner submission email failed'));
+  }
+});
+
 const jobCountForCleaner = (cleanerId) => db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE cleaner_id = ?').get(cleanerId).n;
 
-module.exports = { supplierRouter, registerAdminRoutes, isSupplier, jobCountForCleaner, rawImage };
+module.exports = { supplierRouter, cleanerRouter, registerAdminRoutes, isSupplier, jobCountForCleaner, rawImage };

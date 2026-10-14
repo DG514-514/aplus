@@ -62,7 +62,7 @@ app.use(auth.loadSession);
 // State-changing API calls must be JSON: browsers can't send cross-site JSON
 // without a CORS preflight, which (with SameSite cookies) blocks CSRF.
 // Supplier job photos are uploaded as raw image bytes; image content types also require a CORS preflight.
-const PHOTO_UPLOAD = /^\/supplier\/jobs\/\d+\/photos$/;
+const PHOTO_UPLOAD = /^\/(supplier\/jobs\/\d+|cleaner\/[A-Za-z0-9_-]{20,64})\/photos$/;
 app.use('/api', (req, res, next) => {
   if (req.method === 'POST' && PHOTO_UPLOAD.test(req.path) && req.is(['image/jpeg', 'image/png', 'image/webp'])) return next();
   if (req.method !== 'GET' && !req.is('application/json')) {
@@ -330,6 +330,7 @@ app.post('/api/inquiries', (req, res) => {
 
 app.use('/api/admin', admin.router);
 app.use('/api/supplier', jobs.supplierRouter);
+app.use('/api/cleaner', jobs.cleanerRouter);
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -360,6 +361,12 @@ app.get('/admin/agreements/:id', (req, res) => {
   const record = terms.getRecord(Number(req.params.id));
   if (!record) return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
   res.type('html').send(termsPages.recordPage(record));
+});
+
+// Cleaner's one-job page (no login); the page checks the link with /api/cleaner/:token.
+app.get('/c/:token', (_req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
+  res.sendFile(path.join(PUBLIC_DIR, 'cleaner.html'));
 });
 
 // Supplier portal: job requests, photos and completion.

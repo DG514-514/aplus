@@ -80,3 +80,17 @@
   .job-reply { flex-direction: column; align-items: stretch; }
   .job-msg { max-width: 100%; }
 }
+
+/* Cleaner one-job page and supplier cleaner-link box */
+.cleaner-main { max-width: 720px; }
+.cleaner-title { margin: 0; font-size: 1.25rem; }
+.cleaner-expired { text-align: center; padding: 32px 20px; }
+.cleaner-main .job-upload .btn { flex: 1 1 160px; }
+.job-link { display: grid; gap: 8px; border: 1px dashed var(--sage-300, #c7d3c2); border-radius: var(--radius-sm); padding: 12px 14px; }
+.job-link h4 { margin: 0; font-size: .95rem; color: var(--forest); }
+.job-link .sub { margin: 0; color: var(--muted); font-size: .88rem; }
+.job-link-url { font-family: ui-monospace, monospace; font-size: .82rem; background: var(--sage-50); border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
+.job-link-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-review { display: grid; gap: 10px; background: #fbf3f9; border: 1px solid #ecd0e5; border-radius: var(--radius-sm); padding: 14px 16px; }
+.job-review h4 { margin: 0; color: #8a2f74; }
+.job-review .job-link-actions .btn { flex: 1 1 auto; max-width: 100%; white-space: normal; }
