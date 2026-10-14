@@ -236,6 +236,7 @@ p { margin: 0 0 1em; }
 .mock-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
 .mock-row:last-child { border-bottom: 0; }
 .mock-row small { display: block; color: var(--muted); }
+.mock-date { min-width: 56px; text-align: right; color: var(--forest); font-weight: 700; }
 
 .feature-list { list-style: none; padding: 0; margin: 24px 0 32px; display: grid; gap: 14px; }
 .feature-list li { display: flex; gap: 14px; }
