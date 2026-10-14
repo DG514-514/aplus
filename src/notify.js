@@ -14,6 +14,10 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
+// "Friday, Oct 16, 2026" and "2:30 PM" for the owner's quote-request email.
+const formatDay = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const formatClock = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+
 function buildInquiryEmail(inquiry, siteUrl) {
   const rows = [
     ['Name', inquiry.name],
@@ -23,6 +27,8 @@ function buildInquiryEmail(inquiry, siteUrl) {
     ['Residence', inquiry.residence],
     ['Bedrooms', inquiry.bedrooms],
     ['Bathrooms', inquiry.bathrooms],
+    ['Requested date', inquiry.requested_date && formatDay(inquiry.requested_date)],
+    ['Requested time', inquiry.requested_time && formatClock(inquiry.requested_time)],
     ['Message', inquiry.message],
   ].filter(([, value]) => value);
 

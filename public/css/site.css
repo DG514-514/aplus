@@ -350,3 +350,6 @@ p { margin: 0 0 1em; }
 }
 .footer-install { background: none; border: 0; padding: 0; font: inherit; color: #e3eadf; cursor: pointer; }
 .footer-install:hover { color: #fff; text-decoration: underline; }
+
+/* iOS gives date/time inputs an intrinsic width that can overflow narrow grid columns. */
+input[type="date"], input[type="time"] { min-width: 0; -webkit-appearance: none; appearance: none; min-height: 48px; }

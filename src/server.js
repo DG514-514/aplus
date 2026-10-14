@@ -76,6 +76,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BEDROOMS = ['1', '2', '3', '4', '5', '6+'];
 const BATHROOMS = ['1', '1.5', '2', '2.5', '3', '3.5', '4+'];
 const pick = (value, allowed) => (allowed.includes(value) ? value : null);
+// A real calendar date (YYYY-MM-DD) or null.
+const validDate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value ? value : null;
+};
 
 /* ---------- Auth ---------- */
 
@@ -308,14 +314,16 @@ app.post('/api/inquiries', (req, res) => {
     bathrooms: pick(str(body.bathrooms, 3), BATHROOMS),
     plan: str(body.plan, 40),
     message: str(body.message, 2000),
+    requested_date: validDate(str(body.requestedDate, 10)),
+    requested_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(str(body.requestedTime, 5)) ? str(body.requestedTime, 5) : null,
   };
   if (!inquiry.name || !EMAIL_RE.test(inquiry.email)) {
     return res.status(400).json({ error: 'Please include your name and a valid email address.' });
   }
 
   db.prepare(`
-    INSERT INTO inquiries (name, email, phone, residence, bedrooms, bathrooms, plan, message)
-    VALUES (:name, :email, :phone, :residence, :bedrooms, :bathrooms, :plan, :message)
+    INSERT INTO inquiries (name, email, phone, residence, bedrooms, bathrooms, plan, message, requested_date, requested_time)
+    VALUES (:name, :email, :phone, :residence, :bedrooms, :bathrooms, :plan, :message, :requested_date, :requested_time)
   `).run(inquiry);
   res.status(201).json({ ok: true });
 
@@ -323,7 +331,7 @@ app.post('/api/inquiries', (req, res) => {
   sendInquiryAlert(inquiry).catch((err) => console.error('Quote request email failed:', err.message));
   push.notifyOwner({
     title: 'New quote request',
-    body: [inquiry.name, inquiry.plan, inquiry.residence].filter(Boolean).join(' · '),
+    body: [inquiry.name, inquiry.plan, inquiry.residence, inquiry.requested_date].filter(Boolean).join(' · '),
     url: '/admin#inquiries', tag: 'inquiry',
   }).catch((err) => console.error('Push failed:', err.message));
 });

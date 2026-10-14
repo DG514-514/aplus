@@ -39,6 +39,7 @@
 .inquiry-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .inquiry-head strong { font-family: var(--font-head); color: var(--forest); font-size: 1.05rem; }
 .inquiry .sub { color: var(--muted); font-size: .9rem; }
+.inquiry-when { margin: 0 0 8px; color: var(--forest); }
 .inquiry-msg { background: var(--sage-50); padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; }
 .inquiry .row-actions { justify-content: flex-start; margin-top: 12px; gap: 10px; }
 

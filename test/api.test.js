@@ -129,6 +129,7 @@ test('inquiry form stores valid leads and validates email', async () => {
   assert.equal(bad.status, 400);
   const ok = await post('/api/inquiries', {
     name: 'Sam', email: 'sam@example.com', plan: 'Weekly', residence: 'Maple Hall', bedrooms: '2', bathrooms: '1.5',
+    requestedDate: '2026-11-20', requestedTime: '14:30',
   });
   assert.equal(ok.status, 201);
   const row = db.prepare('SELECT * FROM inquiries WHERE email = ?').get('sam@example.com');
@@ -136,12 +137,16 @@ test('inquiry form stores valid leads and validates email', async () => {
   assert.equal(row.residence, 'Maple Hall');
   assert.equal(row.bedrooms, '2');
   assert.equal(row.bathrooms, '1.5');
+  assert.equal(row.requested_date, '2026-11-20');
+  assert.equal(row.requested_time, '14:30');
 
   // Values outside the dropdown options are ignored rather than stored.
-  await post('/api/inquiries', { name: 'Kim', email: 'kim@example.com', bedrooms: '99', bathrooms: '<b>' });
+  await post('/api/inquiries', { name: 'Kim', email: 'kim@example.com', bedrooms: '99', bathrooms: '<b>', requestedDate: '2026-02-31', requestedTime: '25:00' });
   const odd = db.prepare('SELECT * FROM inquiries WHERE email = ?').get('kim@example.com');
   assert.equal(odd.bedrooms, null);
   assert.equal(odd.bathrooms, null);
+  assert.equal(odd.requested_date, null);
+  assert.equal(odd.requested_time, null);
 });
 
 test('admin area requires owner credentials and can manage clients and orders', async () => {
@@ -199,7 +204,7 @@ test('quote requests trigger an email alert when email is configured', async () 
   process.env.NOTIFY_EMAIL = 'info@example.com';
   try {
     const res = await post('/api/inquiries',
-      { name: 'Jamie <b>Lee</b>', email: 'jamie@example.com', plan: 'Monthly', bedrooms: '3', bathrooms: '2', message: 'Hi there' });
+      { name: 'Jamie <b>Lee</b>', email: 'jamie@example.com', plan: 'Monthly', bedrooms: '3', bathrooms: '2', message: 'Hi there', requestedDate: '2026-10-16', requestedTime: '09:00' });
     assert.equal(res.status, 201);
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(sent.length, 1);
@@ -210,6 +215,8 @@ test('quote requests trigger an email alert when email is configured', async () 
     assert.ok(!sent[0].html.includes('<b>Lee</b>'));
     assert.match(sent[0].text, /Bedrooms: 3/);
     assert.match(sent[0].text, /Bathrooms: 2/);
+    assert.match(sent[0].text, /Requested date: Friday, Oct 16, 2026/);
+    assert.match(sent[0].text, /Requested time: 9:00 AM/);
   } finally {
     global.fetch = realFetch;
     delete process.env.RESEND_API_KEY;
