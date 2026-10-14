@@ -71,6 +71,8 @@ async function refresh() {
   renderInvoices();
   renderCleaners();
   renderPaymentsStatus();
+  // Lets other dashboard scripts (Jobs) refresh their client/supplier dropdowns.
+  document.dispatchEvent(new Event('admin:data'));
 }
 
 /* ---------- Tabs ---------- */
@@ -879,12 +881,32 @@ function renderCleaners() {
           c.company ? el('span', { class: 'sub' }, c.company) : null),
         el('div', { class: 'row-actions' },
           el('span', { class: `badge ${c.active ? 'badge-completed' : 'badge-cancelled'}` }, c.active ? 'Active' : 'Inactive'),
+          c.portal ? el('span', { class: 'badge badge-pending' }, 'Portal on') : null,
+          el('button', { type: 'button', class: 'link-btn', onclick: () => portalLogin(c) }, c.portal ? 'Reset Portal Password' : 'Create Portal Login'),
+          c.portal ? el('button', { type: 'button', class: 'link-btn', onclick: () => portalOff(c) }, 'Turn Off Portal') : null,
           el('button', { type: 'button', class: 'link-btn', onclick: () => editCleaner(c) }, 'Edit'),
           el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteCleaner(c) }, 'Delete'))),
       contact.children.length ? contact : null,
       c.services.length ? services : el('p', { class: 'sub' }, 'No services listed yet.'),
       c.notes ? el('p', { class: 'cleaner-notes' }, c.notes) : null));
   }
+}
+
+// Supplier portal logins: the supplier signs in at /supplier with their email and this password.
+async function portalLogin(c) {
+  if (!c.email) { toast('Add an email for this supplier first (Edit) — it’s their username.'); return; }
+  const password = window.prompt(`Password for ${c.name}'s supplier portal (min. 8 characters). Share it with them along with the link.`, generatePassword());
+  if (password == null) return;
+  try {
+    await api(`/cleaners/${c.id}/portal`, 'POST', { password });
+    await refresh();
+    window.prompt('Portal login ready. Copy these details and send them to the supplier:', `${location.origin}/supplier  ·  Email: ${c.email}  ·  Password: ${password}`);
+  } catch (err) { toast(err.message); }
+}
+
+async function portalOff(c) {
+  if (!window.confirm(`Turn off ${c.name}'s supplier portal? They won't be able to sign in until you create a new login.`)) return;
+  try { await api(`/cleaners/${c.id}/portal`, 'DELETE'); await refresh(); toast('Portal login turned off.'); } catch (err) { toast(err.message); }
 }
 
 /* ---------- Phone app & notifications ---------- */
@@ -986,7 +1008,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshPushUI();
   // Deep links from notifications, e.g. /admin#invoices
   const startView = location.hash.slice(1);
-  if (['orders', 'clients', 'invoices', 'cleaners', 'inquiries'].includes(startView)) showView(startView);
+  if (['orders', 'clients', 'jobs', 'invoices', 'cleaners', 'inquiries'].includes(startView)) showView(startView);
   $('invoice-form').addEventListener('submit', submitInvoice);
   for (const select of [$('o-client'), $('i-client')]) {
     select.addEventListener('change', () => {

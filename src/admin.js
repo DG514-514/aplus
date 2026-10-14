@@ -13,6 +13,7 @@ const stripe = require('./stripe');
 const push = require('./push');
 const terms = require('./terms');
 const assistant = require('./assistant');
+const jobs = require('./jobs');
 
 const COOKIE_NAME = 'aplus_admin';
 const ADMIN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -92,6 +93,9 @@ router.use(requireAdmin);
 
 // Ace, the owner's voice assistant.
 router.use('/assistant', assistant.router);
+
+// Supplier job requests, supplier payments and supplier portal logins.
+jobs.registerAdminRoutes(router);
 
 router.get('/overview', (_req, res) => {
   const clients = db.prepare(`
@@ -340,9 +344,10 @@ router.post('/invoices/:id/void', (req, res) => {
 
 function listCleaners() {
   const services = db.prepare('SELECT cleaner_id, service, cost_cents, unit FROM cleaner_services ORDER BY id').all();
-  return db.prepare('SELECT * FROM cleaners ORDER BY active DESC, name COLLATE NOCASE').all().map((c) => ({
+  return db.prepare('SELECT * FROM cleaners ORDER BY active DESC, name COLLATE NOCASE').all().map(({ password_hash, ...c }) => ({
     ...c,
     active: Boolean(c.active),
+    portal: Boolean(password_hash), // never send the hash itself
     services: services.filter((s) => s.cleaner_id === c.id).map(({ cleaner_id, ...s }) => s),
   }));
 }
@@ -417,6 +422,9 @@ router.put('/cleaners/:id', (req, res) => {
 });
 
 router.delete('/cleaners/:id', (req, res) => {
+  if (jobs.jobCountForCleaner(Number(req.params.id))) {
+    return res.status(409).json({ error: 'This supplier has jobs on record, which are kept for payment history. Set them to Inactive instead.' });
+  }
   const result = db.prepare('DELETE FROM cleaners WHERE id = ?').run(Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Cleaner not found.' });
   res.json({ ok: true });

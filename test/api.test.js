@@ -795,3 +795,129 @@ test('website sign-up: account waits for owner approval before the client can si
     delete process.env.RESEND_API_KEY;
   }
 });
+
+test('supplier jobs: request → accept/comment → photos + employee → complete → paid', async () => {
+  const sent = [];
+  const realFetch = global.fetch;
+  process.env.RESEND_API_KEY = 'test-resend';
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) { sent.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
+    return realFetch(url, opts);
+  };
+  const del = (url, headers) => fetch(base + url, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...headers }, body: '{}' });
+  try {
+    const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+    const admin = { cookie: adminLogin.headers.get('set-cookie').split(';')[0] };
+
+    // Owner adds a supplier and gives them a portal login.
+    await post('/api/admin/cleaners', { name: 'Ana Ruiz', company: 'Casa Nuova', email: 'ana@casanuova.test', active: true, services: [{ service: '2 Bedroom / 2 Bathroom Standard Clean', cost: '130', unit: 'clean' }] }, admin);
+    const { cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const ana = cleaners.find((c) => c.email === 'ana@casanuova.test');
+    assert.equal(ana.portal, false);
+    assert.equal('password_hash' in ana, false);
+    assert.equal((await post(`/api/admin/cleaners/${ana.id}/portal`, { password: 'short' }, admin)).status, 400);
+    assert.equal((await post(`/api/admin/cleaners/${ana.id}/portal`, { password: 'ana-portal-1' }, admin)).status, 200);
+
+    // Supplier pages are gated.
+    assert.match(await (await fetch(`${base}/supplier`)).text(), /Supplier login/);
+    assert.equal((await fetch(`${base}/api/supplier/jobs`)).status, 401);
+    assert.equal((await post('/api/supplier/login', { email: 'ana@casanuova.test', password: 'wrong-pass' })).status, 401);
+    const supLogin = await post('/api/supplier/login', { email: 'ANA@casanuova.test', password: 'ana-portal-1' });
+    assert.equal(supLogin.status, 200);
+    const sup = { cookie: supLogin.headers.get('set-cookie').split(';')[0] };
+    assert.match(await (await fetch(`${base}/supplier`, { headers: sup })).text(), /Supplier portal/);
+    // A supplier session is not an owner or client session.
+    assert.equal((await fetch(`${base}/api/admin/jobs`, { headers: sup })).status, 401);
+
+    // Owner creates a job request.
+    assert.equal((await post('/api/admin/jobs', { cleanerId: ana.id, address: '', serviceDate: '2026-11-02', pay: '130' }, admin)).status, 400);
+    assert.equal((await post('/api/admin/jobs', { cleanerId: ana.id, address: '1 Main St', serviceDate: '2026-11-02', timeStart: '14:00', timeEnd: '12:00', pay: '130' }, admin)).status, 400);
+    const created = await post('/api/admin/jobs', {
+      cleanerId: ana.id, clientName: 'Maya Lopez', address: '900 Brickell Ave', unit: '12B', bedrooms: '2', bathrooms: '2',
+      service: '2 Bedroom / 2 Bathroom Standard Clean', serviceDate: '2026-11-02', timeStart: '10:00', timeEnd: '13:00', pay: '130', instructions: 'Key at front desk',
+    }, admin);
+    assert.equal(created.status, 201);
+    const { id: jobId, job_number } = await created.json();
+    assert.match(job_number, /^J-\d+$/);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(sent.some((m) => m.to?.[0] === 'ana@casanuova.test' && /New job request/.test(m.subject)));
+
+    // Supplier sees it with address, beds/baths and times, and replies with a comment.
+    let { jobs } = await (await fetch(`${base}/api/supplier/jobs`, { headers: sup })).json();
+    let job = jobs.find((j) => j.id === jobId);
+    assert.equal(job.status, 'requested');
+    assert.equal(job.address, '900 Brickell Ave');
+    assert.equal(job.bedrooms, '2');
+    assert.equal(job.time_start, '10:00');
+    assert.equal('client_id' in job, false);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/messages`, { body: 'Can we start at 11?' }, sup)).status, 201);
+    let owner = await (await fetch(`${base}/api/admin/jobs`, { headers: admin })).json();
+    assert.equal(owner.jobs.find((j) => j.id === jobId).awaiting_owner, true);
+    assert.equal((await post(`/api/admin/jobs/${jobId}/messages`, { body: '11 works.' }, admin)).status, 201);
+
+    // Photos/completion aren't allowed before accepting.
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
+    const upload = (kind, body = jpeg, type = 'image/jpeg') => fetch(`${base}/api/supplier/jobs/${jobId}/photos?kind=${kind}`, { method: 'POST', headers: { ...sup, 'Content-Type': type }, body });
+    assert.equal((await upload('before')).status, 409);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/accept`, {}, sup)).status, 200);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/accept`, {}, sup)).status, 409);
+
+    // Pending completion: needs before + after photos and the employee's full name.
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: 'Luis Gomez' }, sup)).status, 400);
+    assert.equal((await upload('before', Buffer.from('not an image'))).status, 400);
+    assert.equal((await upload('sideways')).status, 400);
+    const b = await upload('before');
+    assert.equal(b.status, 201);
+    const beforeId = (await b.json()).id;
+    assert.equal((await upload('after')).status, 201);
+    assert.equal((await upload('after')).status, 201);
+    assert.equal((await del(`/api/supplier/jobs/${jobId}/photos/${beforeId}`, sup)).status, 200);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: 'Luis Gomez' }, sup)).status, 400);
+    const b2 = await upload('before');
+    const photoId = (await b2.json()).id;
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: 'Luis' }, sup)).status, 400);
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: '  Luis   Gomez ', notes: 'Oven was very dirty' }, sup)).status, 200);
+
+    // Photos are viewable by the supplier and the owner only.
+    const img = await fetch(`${base}/api/supplier/photos/${photoId}`, { headers: sup });
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get('content-type'), 'image/jpeg');
+    assert.equal((await fetch(`${base}/api/admin/jobs/photos/${photoId}`, { headers: admin })).status, 200);
+    assert.equal((await fetch(`${base}/api/admin/jobs/photos/${photoId}`)).status, 401);
+    assert.equal((await upload('after')).status, 409);
+
+    // Owner sees it completed and owed; supplier sees the outstanding amount.
+    owner = await (await fetch(`${base}/api/admin/jobs`, { headers: admin })).json();
+    job = owner.jobs.find((j) => j.id === jobId);
+    assert.equal(job.status, 'completed');
+    assert.equal(job.completed_by, 'Luis Gomez');
+    assert.equal(job.photos.filter((p) => p.kind === 'after').length, 2);
+    assert.equal(owner.payables.find((p) => p.cleaner_id === ana.id).outstanding_cents, 13000);
+    let me = await (await fetch(`${base}/api/supplier/me`, { headers: sup })).json();
+    assert.equal(me.payables.outstanding_cents, 13000);
+    assert.ok(sent.some((m) => /Job completed/.test(m.subject)));
+
+    // Mark paid with a reference → nothing outstanding.
+    assert.equal((await post(`/api/admin/jobs/${jobId}/paid`, { paid: true, ref: 'ET-5521' }, admin)).status, 200);
+    me = await (await fetch(`${base}/api/supplier/me`, { headers: sup })).json();
+    assert.equal(me.payables.outstanding_cents, 0);
+    assert.equal(me.payables.paid_cents, 13000);
+    ({ jobs } = await (await fetch(`${base}/api/supplier/jobs`, { headers: sup })).json());
+    assert.equal(jobs.find((j) => j.id === jobId).supplier_paid_ref, 'ET-5521');
+
+    // Pay-all, cancel and supplier deletion rules.
+    const second = await (await post('/api/admin/jobs', { cleanerId: ana.id, address: '2 Side St', serviceDate: '2026-11-05', pay: '110' }, admin)).json();
+    assert.equal((await post(`/api/admin/jobs/${second.id}/paid`, { paid: true }, admin)).status, 409);
+    assert.equal((await post(`/api/admin/jobs/${second.id}/cancel`, {}, admin)).status, 200);
+    assert.equal((await post(`/api/supplier/jobs/${second.id}/accept`, {}, sup)).status, 409);
+    assert.equal((await del(`/api/admin/jobs/${second.id}`, admin)).status, 200);
+    assert.equal((await del(`/api/admin/cleaners/${ana.id}`, admin)).status, 409);
+
+    // Turning the portal off signs the supplier out.
+    assert.equal((await del(`/api/admin/cleaners/${ana.id}/portal`, admin)).status, 200);
+    assert.equal((await fetch(`${base}/api/supplier/jobs`, { headers: sup })).status, 401);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+});

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Supplier Portal | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#809678">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <link rel="stylesheet" href="/css/jobs.css">
+  <script src="/js/jobs-common.js" defer></script>
+  <script src="/js/supplier.js" defer></script>
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <div class="container portal-nav">
+      <a href="/supplier" class="brand"><img src="/img/logo.png" alt="A+ Cleaning Solutions" width="800" height="333"></a>
+      <div class="portal-user">
+        <span class="portal-tag">Supplier portal</span>
+        <span class="portal-user-name" id="supplier-name"></span>
+        <button class="btn btn-outline btn-sm" id="logout-btn" type="button">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container portal-main">
+    <div class="portal-welcome">
+      <div>
+        <h1 id="greeting">Your jobs</h1>
+        <p class="muted">Accept new requests, upload before &amp; after photos and mark jobs complete.</p>
+      </div>
+    </div>
+
+    <div class="alert" id="notice" role="status" aria-live="polite" hidden></div>
+
+    <section class="stats" aria-label="Summary">
+      <article class="stat stat-feature"><span class="stat-label">New requests</span><strong class="stat-value" id="s-new">—</strong><span class="stat-meta">waiting for your answer</span></article>
+      <article class="stat"><span class="stat-label">Pending completion</span><strong class="stat-value" id="s-pending">—</strong><span class="stat-meta">accepted jobs</span></article>
+      <article class="stat"><span class="stat-label">Payment outstanding</span><strong class="stat-value" id="s-owed">—</strong><span class="stat-meta" id="s-owed-meta"></span></article>
+      <article class="stat"><span class="stat-label">Paid to date</span><strong class="stat-value" id="s-paid">—</strong><span class="stat-meta" id="s-paid-meta"></span></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Jobs</h2>
+        <div class="tabs" role="tablist" aria-label="Filter jobs">
+          <button role="tab" type="button" class="tab" aria-selected="true" data-filter="requested">New requests <span class="count" id="c-requested"></span></button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-filter="accepted">Pending completion <span class="count" id="c-accepted"></span></button>
+          <button role="tab" type="button" class="tab" aria-selected="false" data-filter="completed">Completed</button>
+        </div>
+      </div>
+      <div class="jobs-list" id="jobs-list"></div>
+      <p class="empty" id="jobs-empty" hidden></p>
+    </section>
+  </main>
+
+  <footer class="portal-footer container">
+    Questions about a job? Email <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

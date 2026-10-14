@@ -174,4 +174,7 @@ db.nextInvoiceNumber = () => {
   return `INV-${1001 + (row ? row.seq : 0)}`;
 };
 
+// Folder next to the database (on the persistent disk in production) for uploaded files.
+db.dataDir = path.dirname(DB_PATH);
+
 module.exports = db;
