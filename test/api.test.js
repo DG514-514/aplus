@@ -1153,3 +1153,51 @@ test('cleaner link: one job only, no login, supplier approves the submission', a
     delete process.env.RESEND_API_KEY;
   }
 });
+
+test('payment and job-completed alerts always reach info@aplus-cleaning-solutions.com', async () => {
+  const sent = [];
+  const realFetch = global.fetch;
+  process.env.RESEND_API_KEY = 'test-resend';
+  process.env.NOTIFY_EMAIL = 'someone-else@example.com';
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) { sent.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
+    return realFetch(url, opts);
+  };
+  const INFO = 'info@aplus-cleaning-solutions.com';
+  const soon = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+  try {
+    const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };
+
+    // Invoice paid.
+    const clientId = Number(addClient('payer@example.com', 'payerpass1', 'Pat Payer'));
+    const { invoiceNumber } = await (await post('/api/admin/invoices', { clientId, items: [{ description: 'Studio Standard Clean', amount: '110' }], sendEmail: false }, admin)).json();
+    const { invoices } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const inv = invoices.find((i) => i.invoice_number === invoiceNumber);
+    assert.equal((await post(`/api/admin/invoices/${inv.id}/mark-paid`, { method: 'e-transfer' }, admin)).status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    const paidMail = sent.find((m) => m.subject.startsWith(`Payment received: ${invoiceNumber}`));
+    assert.ok(paidMail);
+    assert.deepEqual(paidMail.to, ['someone-else@example.com', INFO]);
+    assert.match(paidMail.text, /Pat Payer/);
+
+    // Supplier job completed.
+    await post('/api/admin/cleaners', { name: 'Tina Lee', company: 'Lee Clean', email: 'tina@lee.test', active: true, services: [] }, admin);
+    const { cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const tina = cleaners.find((c) => c.email === 'tina@lee.test');
+    await post(`/api/admin/cleaners/${tina.id}/portal`, { password: 'tina-portal-1' }, admin);
+    const sup = { cookie: (await post('/api/supplier/login', { email: 'tina@lee.test', password: 'tina-portal-1' })).headers.get('set-cookie').split(';')[0] };
+    const { id: jobId } = await (await post('/api/admin/jobs', { cleanerId: tina.id, address: '7 Bay Rd', serviceDate: soon, pay: '90' }, admin)).json();
+    await post(`/api/supplier/jobs/${jobId}/accept`, {}, sup);
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
+    for (const kind of ['before', 'after']) await fetch(`${base}/api/supplier/jobs/${jobId}/photos?kind=${kind}`, { method: 'POST', headers: { ...sup, 'Content-Type': 'image/jpeg' }, body: jpeg });
+    assert.equal((await post(`/api/supplier/jobs/${jobId}/complete`, { completedBy: 'Sam Ortiz' }, sup)).status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    const doneMail = sent.find((m) => /^Job completed/.test(m.subject) && m.subject.includes('7 Bay Rd'));
+    assert.ok(doneMail);
+    assert.deepEqual(doneMail.to, ['someone-else@example.com', INFO]);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.NOTIFY_EMAIL;
+  }
+});
