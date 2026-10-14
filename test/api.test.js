@@ -921,3 +921,19 @@ test('supplier jobs: request → accept/comment → photos + employee → comple
     delete process.env.RESEND_API_KEY;
   }
 });
+
+test('orders keep an optional requested service time', async () => {
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = { cookie: adminLogin.headers.get('set-cookie').split(';')[0] };
+  const clientId = addClient('timed@example.com', 'timedpass1', 'Tim Ed');
+  const res = await post('/api/admin/orders', { clientId, date: '2026-11-03', time: '14:30', service: '2 Bedroom / 2 Bathroom Standard Clean', plan: 'Bi-Weekly', amount: '160', status: 'scheduled' }, admin);
+  assert.equal(res.status, 201);
+  let { orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+  let order = orders.find((o) => o.client_id === Number(clientId));
+  assert.equal(order.service_time, '14:30');
+  assert.equal(order.amount_cents, 16000);
+  await fetch(`${base}/api/admin/orders/${order.id}`, { method: 'PATCH', headers: { ...admin, 'Content-Type': 'application/json' }, body: JSON.stringify({ date: '2026-11-03', time: 'bad', service: 'X', plan: 'Monthly', amount: '160', status: 'scheduled' }) });
+  ({ orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json());
+  order = orders.find((o) => o.client_id === Number(clientId));
+  assert.equal(order.service_time, null);
+});

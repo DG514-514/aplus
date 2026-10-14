@@ -212,7 +212,7 @@ app.post('/api/password', auth.requireClientApi, (req, res) => {
 
 app.get('/api/orders', auth.requireClientApi, requireTerms, (req, res) => {
   const orders = db.prepare(`
-    SELECT order_number, service_date, service_type, plan, location, status, amount_cents, notes
+    SELECT order_number, service_date, service_time, service_type, plan, location, status, amount_cents, notes
     FROM orders WHERE client_id = ?
     ORDER BY service_date DESC, id DESC
   `).all(req.client.id);

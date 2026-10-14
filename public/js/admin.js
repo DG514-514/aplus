@@ -174,7 +174,7 @@ function renderOrders() {
     }
 
     tbody.append(el('tr', {},
-      el('td', { 'data-label': 'Date' }, el('time', {}, fmtDate(o.service_date))),
+      el('td', { 'data-label': 'Date' }, el('time', {}, fmtDate(o.service_date)), o.service_time ? el('span', { class: 'sub' }, fmtClock(o.service_time)) : null),
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
       el('td', { 'data-label': 'Client' }, o.client_name),
       el('td', { 'data-label': 'Service' }, el('div', {},
@@ -187,10 +187,39 @@ function renderOrders() {
   }
 }
 
+// The order form uses the same service presets as invoices: picking one fills the description and price.
+const fmtClock = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }); };
+
+function fillOrderServicePicker() {
+  const pick = $('o-service-pick');
+  if (pick.options.length) return;
+  pick.replaceChildren(el('option', { value: '' }, 'Choose a service…'),
+    ...SERVICES.map((s) => el('option', { value: s.id }, s.name)), el('option', { value: 'custom' }, 'Custom service…'));
+  pick.addEventListener('change', () => {
+    const service = SERVICES.find((s) => s.id === pick.value);
+    if (service) {
+      $('o-service').value = service.name;
+      $('o-amount').value = service.price.toFixed(2);
+    } else if (pick.value === 'custom') {
+      $('o-service').value = '';
+      $('o-service').focus();
+    }
+  });
+}
+
+// Standard service matching a client's (or quote request's) bedrooms/bathrooms, if any.
+function serviceForRooms(src) {
+  if (!src) return null;
+  if (src.bedrooms === 'Studio') return SERVICES.find((s) => s.id === 'studio');
+  return SERVICES.find((s) => s.bedrooms && s.bedrooms === src.bedrooms && s.bathrooms === src.bathrooms) || null;
+}
+
 function resetOrderForm() {
   const form = $('order-form');
   form.reset();
   form.plan.value = 'Bi-Weekly';
+  fillOrderServicePicker();
+  $('o-service-pick').value = '';
   state.editingOrder = null;
   $('order-form-title').textContent = 'Add an order';
   $('order-submit').textContent = 'Add Order';
@@ -205,6 +234,9 @@ function editOrder(o) {
   form.clientId.value = String(o.client_id);
   form.clientId.disabled = true;
   form.date.value = o.service_date;
+  form.time.value = o.service_time || '';
+  fillOrderServicePicker();
+  $('o-service-pick').value = SERVICES.find((s) => s.name === o.service_type)?.id || 'custom';
   form.service.value = o.service_type;
   form.plan.value = o.plan;
   form.amount.value = (o.amount_cents / 100).toFixed(2);
@@ -356,7 +388,14 @@ function newOrderFor(c) {
   resetOrderForm();
   showView('orders');
   $('o-client').value = String(c.id);
-  $('o-date').focus();
+  // Same pre-fill as the invoice form: pick the standard service for the client's unit size.
+  const match = serviceForRooms(c);
+  if (match) {
+    $('o-service-pick').value = match.id;
+    $('o-service-pick').dispatchEvent(new Event('change'));
+  }
+  $('order-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('o-date').focus({ preventScroll: true });
 }
 
 async function resetPassword(c) {
@@ -645,6 +684,12 @@ function openInvoiceFor(client, inquiry = null) {
   showView('invoices');
   $('i-client').value = String(client.id);
   state.invoiceInquiry = inquiry;
+  if (!inquiry && serviceForRooms(client)) {
+    const row = $('invoice-items').querySelector('.item-row');
+    const match = serviceForRooms(client);
+    row.querySelector('.item-service').value = match.id;
+    applyService(row, match.id);
+  }
   if (inquiry) {
     const row = $('invoice-items').querySelector('.item-row');
     // Pre-pick the standard service matching the requested bedrooms/bathrooms, if there is one.
@@ -1028,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('add-item').addEventListener('click', () => addItemRow().querySelector('.item-desc').focus());
   $('invoice-search').addEventListener('input', renderInvoices);
   resetInvoiceForm();
+  fillOrderServicePicker();
   resetCleanerForm();
   $('cleaner-form').addEventListener('submit', submitCleaner);
   $('cleaner-cancel').addEventListener('click', resetCleanerForm);

@@ -157,6 +157,7 @@ if (!hasColumn('inquiries', 'decline_reason')) db.exec('ALTER TABLE inquiries AD
 if (!hasColumn('invoices', 'service_date')) db.exec('ALTER TABLE invoices ADD COLUMN service_date TEXT');
 if (!hasColumn('invoices', 'service_time')) db.exec('ALTER TABLE invoices ADD COLUMN service_time TEXT');
 // Self sign-up: accounts created on the website wait for the owner's approval ('pending' → 'active').
+if (!hasColumn('orders', 'service_time')) db.exec('ALTER TABLE orders ADD COLUMN service_time TEXT');
 if (!hasColumn('clients', 'status')) db.exec("ALTER TABLE clients ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
 if (!hasColumn('clients', 'bedrooms')) db.exec('ALTER TABLE clients ADD COLUMN bedrooms TEXT');
 if (!hasColumn('clients', 'bathrooms')) db.exec('ALTER TABLE clients ADD COLUMN bathrooms TEXT');

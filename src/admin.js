@@ -109,7 +109,7 @@ router.get('/overview', (_req, res) => {
     ORDER BY c.name COLLATE NOCASE
   `).all(terms.version);
   const orders = db.prepare(`
-    SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_type,
+    SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_time, o.service_type,
            o.plan, o.location, o.status, o.amount_cents, o.notes
     FROM orders o JOIN clients c ON c.id = o.client_id
     ORDER BY o.service_date DESC, o.id DESC
@@ -219,6 +219,7 @@ router.delete('/clients/:id', (req, res) => {
 function readOrder(b) {
   const order = {
     service_date: str(b.date, 10),
+    service_time: /^\d{2}:\d{2}$/.test(b.time || '') ? b.time : null,
     service_type: str(b.service, 120),
     plan: str(b.plan, 40),
     location: orNull(str(b.location, 160)),
@@ -243,9 +244,9 @@ router.post('/orders', (req, res) => {
     || [client.residence, client.room && `Rm ${client.room}`].filter(Boolean).join(', ') || null;
   const orderNumber = db.nextOrderNumber();
   db.prepare(`
-    INSERT INTO orders (client_id, order_number, service_date, service_type, plan, location, status, amount_cents, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(client.id, orderNumber, order.service_date, order.service_type, order.plan, order.location,
+    INSERT INTO orders (client_id, order_number, service_date, service_time, service_type, plan, location, status, amount_cents, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(client.id, orderNumber, order.service_date, order.service_time, order.service_type, order.plan, order.location,
     order.status, order.amount_cents, order.notes);
   res.status(201).json({ orderNumber });
 });
@@ -265,9 +266,9 @@ router.patch('/orders/:id', (req, res) => {
   const { order, error } = readOrder(req.body || {});
   if (error) return res.status(400).json({ error });
   db.prepare(`
-    UPDATE orders SET service_date = ?, service_type = ?, plan = ?, location = ?, status = ?, amount_cents = ?, notes = ?
+    UPDATE orders SET service_date = ?, service_time = ?, service_type = ?, plan = ?, location = ?, status = ?, amount_cents = ?, notes = ?
     WHERE id = ?
-  `).run(order.service_date, order.service_type, order.plan, order.location, order.status,
+  `).run(order.service_date, order.service_time, order.service_type, order.plan, order.location, order.status,
     order.amount_cents, order.notes, id);
   res.json({ ok: true });
 });
