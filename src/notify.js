@@ -59,6 +59,12 @@ function buildInquiryEmail(inquiry, siteUrl) {
 
 const DEFAULT_NOTIFY_EMAIL = 'info@aplus-cleaning-solutions.com';
 
+// Payments and completed jobs always reach the business inbox, even if NOTIFY_EMAIL lists other addresses.
+function ownerInbox() {
+  const list = config().to;
+  return list.some((e) => e.toLowerCase() === DEFAULT_NOTIFY_EMAIL) ? list : [...list, DEFAULT_NOTIFY_EMAIL];
+}
+
 // Last outcome, shown in the owner dashboard so problems are visible without server logs.
 const lastResult = { at: null, ok: null, message: null };
 
@@ -228,13 +234,19 @@ function sendDeclineEmail({ inquiry, reason }) {
 
 // Tells the business a client paid.
 function sendPaymentAlert({ client, invoice }) {
-  const text = `${client.name} (${client.email}) paid invoice ${invoice.invoice_number}: ${money(invoice.amount_cents)}.`;
-  return track(sendEmail({
+  const site = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  const how = invoice.paid_method === 'stripe' ? 'Paid by card through Stripe' : `Marked paid (${invoice.paid_method || 'manual'})`;
+  return sendNotice({
+    to: ownerInbox(),
     replyTo: client.email,
     subject: `Payment received: ${invoice.invoice_number} (${money(invoice.amount_cents)})`,
-    text,
-    html: `<p style="font-family:Arial,sans-serif">💳 ${escapeHtml(text)}</p>`,
-  }));
+    lines: [
+      `💳 ${client.name} (${client.email}) paid invoice ${invoice.invoice_number}: ${money(invoice.amount_cents)}.`,
+      `${how}${invoice.paid_at ? ` · ${invoice.paid_at} UTC` : ''}`,
+      invoice.receipt_url ? `Stripe receipt: ${invoice.receipt_url}` : null,
+    ].filter(Boolean),
+    link: site ? ['Open invoices', `${site}/admin#invoices`] : null,
+  });
 }
 
 // Owner alert: someone created an account on the website and is waiting for approval.
@@ -311,5 +323,5 @@ function emailStatus() {
 
 module.exports = {
   sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, sendDeclineEmail, emailStatus, buildInquiryEmail, formatService,
-  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail, sendNotice,
+  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail, sendNotice, ownerInbox,
 };

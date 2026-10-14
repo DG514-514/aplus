@@ -270,8 +270,9 @@ function ownJob(req, res) {
   return job;
 }
 
-function tellOwner(job, title, lines) {
+function tellOwner(job, title, lines, { to } = {}) {
   notify.sendNotice({
+    to,
     subject: `${title}: ${jobNumber(job.id)} · ${job.address}`,
     lines,
     link: siteUrl() ? ['Open in dashboard', `${siteUrl()}/admin#jobs`] : null,
@@ -346,7 +347,7 @@ supplierRouter.post('/jobs/:id/complete', (req, res) => {
     `${job.cleaner_name} marked job ${jobNumber(job.id)} complete.`,
     `${job.address} · completed by ${completedBy}`,
     `${counts.before} before / ${counts.after} after photos uploaded. Amount owed to supplier: ${dollars(job.pay_cents)}.`,
-  ]);
+  ], { to: notify.ownerInbox() });
 });
 
 // Cleaner link for an accepted job: create (or replace with ?new=1), turn off, or send a submission back.
