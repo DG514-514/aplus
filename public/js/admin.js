@@ -58,13 +58,7 @@ function formError(form, message) {
 
 async function refresh() {
   Object.assign(state, await api('/overview'));
-  $('count-orders').textContent = state.orders.length || '';
-  const pendingCount = state.clients.filter((c) => c.status === 'pending').length;
-  $('count-clients').textContent = pendingCount ? `${pendingCount} new` : (state.clients.length || '');
-  $('count-clients').classList.toggle('count-alert', pendingCount > 0);
   $('count-inquiries').textContent = state.inquiries.filter((i) => !i.invoice_number && !i.declined_at).length || '';
-  $('count-cleaners').textContent = state.cleaners.filter((c) => c.active).length || '';
-  $('count-invoices').textContent = state.invoices.filter((i) => i.status === 'open').length || '';
   renderClientOptions();
   renderOrders();
   renderClients();
