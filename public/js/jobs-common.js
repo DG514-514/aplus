@@ -2,7 +2,8 @@
 
 // Shared pieces for supplier jobs, used by the supplier portal and the owner dashboard.
 window.JobsUI = (() => {
-  const money = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
+  const CURRENCY = ((window.APLUS && window.APLUS.currency) || 'usd').toUpperCase();
+  const money = new Intl.NumberFormat(CURRENCY === 'CAD' ? 'en-CA' : 'en-US', { style: 'currency', currency: CURRENCY });
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);

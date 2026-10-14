@@ -390,6 +390,12 @@ app.get('/portal', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'portal.html'));
 });
 
+// Site settings the browser needs (currency for displaying prices).
+app.get('/js/config.js', (_req, res) => {
+  res.set({ 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.send(`window.APLUS = ${JSON.stringify({ currency: stripe.currency() })};\n`);
+});
+
 // The service worker must always be re-checked so app updates reach phones quickly.
 app.get('/sw.js', (_req, res) => {
   res.set({ 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });

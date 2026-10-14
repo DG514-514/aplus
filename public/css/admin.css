@@ -157,3 +157,10 @@ option.add-new { font-weight: 700; }
 .cf-table { font-size: .93rem; }
 .cf-jobs { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .cf-jobs li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
+
+.row-note { display: block; margin-top: 4px; font-size: .84rem; color: var(--ink); background: var(--sage-50); border-radius: 6px; padding: 3px 8px; white-space: pre-wrap; }
+.row-note.cancel { background: #f1f1f1; color: #666; }
+.ci-refund { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; display: grid; gap: 8px; margin: 0; }
+.ci-refund legend { font-weight: 700; padding: 0 6px; color: var(--forest); }
+.ci-refund .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+.ci-refund [hidden] { display: none; }

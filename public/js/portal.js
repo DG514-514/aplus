@@ -1,6 +1,7 @@
 'use strict';
 
-const money = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
+const CURRENCY = ((window.APLUS && window.APLUS.currency) || 'usd').toUpperCase();
+const money = new Intl.NumberFormat(CURRENCY === 'CAD' ? 'en-CA' : 'en-US', { style: 'currency', currency: CURRENCY });
 const STATUS_LABELS = { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' };
 
 // service_date is a plain YYYY-MM-DD; parse as a local date so it doesn't shift by timezone.
@@ -184,6 +185,7 @@ function setupPasswordForm() {
 /* ---------- Invoices ---------- */
 
 function invoiceBadge(inv) {
+  if (inv.refunded_at) return ['cancelled', 'Refunded'];
   if (inv.status === 'paid') return ['paid', 'Paid'];
   if (inv.due_date && inv.due_date < todayIso()) return ['overdue', 'Overdue'];
   return ['open', 'Due'];
