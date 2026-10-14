@@ -5,7 +5,7 @@
 //   STRIPE_SECRET_KEY      — sk_test_… (testing) or sk_live_… (real payments)
 //   STRIPE_WEBHOOK_SECRET  — optional whsec_… so payments are recorded even if the
 //                            client closes their browser before returning to the site
-//   STRIPE_CURRENCY        — optional, defaults to cad
+//   STRIPE_CURRENCY        — optional, defaults to usd (set to cad to charge in Canadian dollars)
 
 const crypto = require('node:crypto');
 
@@ -13,7 +13,13 @@ const API = 'https://api.stripe.com/v1';
 const WEBHOOK_TOLERANCE_SECONDS = 300;
 
 const secretKey = () => (process.env.STRIPE_SECRET_KEY || '').trim();
-const currency = () => (process.env.STRIPE_CURRENCY || 'cad').toLowerCase();
+const currency = () => (process.env.STRIPE_CURRENCY || 'usd').toLowerCase();
+
+// Formats cents in the currency clients are charged in, e.g. "$160.00".
+const formatMoney = (cents) => {
+  const code = currency().toUpperCase();
+  return new Intl.NumberFormat(code === 'CAD' ? 'en-CA' : 'en-US', { style: 'currency', currency: code }).format(cents / 100);
+};
 
 function status() {
   const key = secretKey();
@@ -81,6 +87,10 @@ function createCheckoutSession({ invoice, items, client, successUrl, cancelUrl }
   });
 }
 
+// Full refund of a card payment.
+const createRefund = (paymentIntent, invoiceNumber) =>
+  request('POST', '/refunds', { payment_intent: paymentIntent, metadata: { invoice_number: invoiceNumber } });
+
 const retrieveCheckoutSession = (id) =>
   request('GET', `/checkout/sessions/${encodeURIComponent(id)}?expand[]=payment_intent.latest_charge`);
 
@@ -106,4 +116,4 @@ function verifyWebhook(rawBody, header) {
   return JSON.parse(rawBody);
 }
 
-module.exports = { status, createCheckoutSession, retrieveCheckoutSession, verifyWebhook };
+module.exports = { status, createCheckoutSession, retrieveCheckoutSession, verifyWebhook, currency, formatMoney, createRefund };

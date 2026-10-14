@@ -110,7 +110,7 @@ router.get('/overview', (_req, res) => {
   `).all(terms.version);
   const orders = db.prepare(`
     SELECT o.id, o.order_number, o.client_id, c.name AS client_name, o.service_date, o.service_time, o.service_type,
-           o.plan, o.location, o.status, o.amount_cents, o.notes,
+           o.plan, o.location, o.status, o.amount_cents, o.notes, o.admin_notes,
            i.invoice_number, i.status AS invoice_status
     FROM orders o JOIN clients c ON c.id = o.client_id
     LEFT JOIN invoices i ON i.id = (SELECT MAX(id) FROM invoices WHERE order_id = o.id AND status != 'void')
@@ -328,7 +328,7 @@ router.post('/invoices', async (req, res) => {
   }
   push.notifyClient(client.id, {
     title: 'New invoice from A+ Cleaning',
-    body: `${invoice.invoice_number} · ${(invoice.amount_cents / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} — tap to view and pay`,
+    body: `${invoice.invoice_number} · ${stripe.formatMoney(invoice.amount_cents)} — tap to view and pay`,
     url: '/portal', tag: `invoice-${invoice.invoice_number}`,
   }).catch((err) => console.error('Push failed:', err.message));
   res.status(201).json({ invoiceNumber: invoice.invoice_number, email });
@@ -343,8 +343,51 @@ router.post('/invoices/:id/mark-paid', (req, res) => {
 });
 
 router.post('/invoices/:id/void', (req, res) => {
-  const result = db.prepare("UPDATE invoices SET status = 'void' WHERE id = ? AND status = 'open'").run(Number(req.params.id));
+  const result = db.prepare("UPDATE invoices SET status = 'void', cancelled_at = datetime('now') WHERE id = ? AND status = 'open'").run(Number(req.params.id));
   if (!result.changes) return res.status(409).json({ error: 'Only unpaid invoices can be voided.' });
+  res.json({ ok: true });
+});
+
+// Cancel any invoice. Unpaid: it just disappears from the client's portal. Paid: optionally refund the card
+// through Stripe ('stripe'), record a refund already made elsewhere ('already'), or keep the money ('none').
+router.post('/invoices/:id/cancel', async (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(req.params.id));
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+  if (invoice.status === 'void') return res.status(409).json({ error: 'This invoice is already cancelled.' });
+  const reason = str(req.body?.reason, 1000) || null;
+  const refund = ['stripe', 'already', 'none'].includes(req.body?.refund) ? req.body.refund : 'none';
+
+  let refundId = null;
+  let refunded = false;
+  if (invoice.status === 'paid' && refund === 'stripe') {
+    if (!invoice.stripe_payment_intent) return res.status(400).json({ error: 'This invoice wasn’t paid by card through Stripe, so it can’t be refunded from here. Refund the client directly, then choose “Already refunded”.' });
+    try {
+      refundId = (await stripe.createRefund(invoice.stripe_payment_intent, invoice.invoice_number)).id;
+      refunded = true;
+    } catch (err) {
+      return res.status(502).json({ error: `The refund didn’t go through, so the invoice was left as is. ${err.message}` });
+    }
+  }
+  if (invoice.status === 'paid' && refund === 'already') refunded = true;
+
+  db.prepare(`
+    UPDATE invoices SET status = 'void', cancelled_at = datetime('now'), cancel_reason = ?,
+      refunded_at = CASE WHEN ? THEN datetime('now') ELSE refunded_at END, refund_id = COALESCE(?, refund_id)
+    WHERE id = ?
+  `).run(reason, refunded ? 1 : 0, refundId, invoice.id);
+  res.json({ ok: true, refunded, refundId });
+});
+
+// Private notes (only the owner sees them).
+router.patch('/invoices/:id/notes', (req, res) => {
+  const result = db.prepare('UPDATE invoices SET admin_notes = ? WHERE id = ?').run(str(req.body?.notes, 2000) || null, Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Invoice not found.' });
+  res.json({ ok: true });
+});
+
+router.patch('/orders/:id/notes', (req, res) => {
+  const result = db.prepare('UPDATE orders SET admin_notes = ? WHERE id = ?').run(str(req.body?.notes, 2000) || null, Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Order not found.' });
   res.json({ ok: true });
 });
 

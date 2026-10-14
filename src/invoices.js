@@ -22,8 +22,8 @@ function findByNumber(invoiceNumber) {
 
 function listForClient(clientId) {
   return db.prepare(`
-    SELECT id, invoice_number, status, amount_cents, due_date, service_date, service_time, notes, receipt_url, paid_at, created_at
-    FROM invoices WHERE client_id = ? AND status != 'void'
+    SELECT id, invoice_number, status, amount_cents, due_date, service_date, service_time, notes, receipt_url, paid_at, created_at, refunded_at
+    FROM invoices WHERE client_id = ? AND (status != 'void' OR refunded_at IS NOT NULL)
     ORDER BY (status = 'open') DESC, created_at DESC, id DESC
   `).all(clientId).map((inv) => {
     const { id, ...rest } = withItems(inv);
@@ -34,7 +34,9 @@ function listForClient(clientId) {
 function listAll() {
   return db.prepare(`
     SELECT i.id, i.invoice_number, i.client_id, c.name AS client_name, c.email AS client_email, i.status,
-           i.amount_cents, i.due_date, i.service_date, i.service_time, i.notes, i.paid_method, i.paid_at, i.receipt_url, i.created_at, i.order_id
+           i.amount_cents, i.due_date, i.service_date, i.service_time, i.notes, i.paid_method, i.paid_at, i.receipt_url, i.created_at, i.order_id,
+           i.admin_notes, i.cancelled_at, i.cancel_reason, i.refunded_at,
+           (i.stripe_payment_intent IS NOT NULL) AS stripe_refundable
     FROM invoices i JOIN clients c ON c.id = i.client_id
     ORDER BY i.id DESC
   `).all().map(withItems);
@@ -74,7 +76,7 @@ function markPaid(invoice, { method, paymentIntent = null, receiptUrl = null }) 
     notify.sendPaymentAlert({ client, invoice: updated }).catch(logEmailError('Payment alert'));
     push.notifyOwner({
       title: 'Payment received 💳',
-      body: `${client.name} paid ${updated.invoice_number} · ${(updated.amount_cents / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })}`,
+      body: `${client.name} paid ${updated.invoice_number} · ${require('./stripe').formatMoney(updated.amount_cents)}`,
       url: '/admin#invoices', tag: `paid-${updated.invoice_number}`,
     }).catch((err) => console.error('Push failed:', err.message));
   }

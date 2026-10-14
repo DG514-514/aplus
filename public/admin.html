@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/css/admin.css">
   <link rel="stylesheet" href="/css/jobs.css">
   <script src="/js/app.js" defer></script>
+  <script src="/js/config.js" defer></script>
   <script src="/js/admin.js" defer></script>
   <script src="/js/jobs-common.js" defer></script>
   <script src="/js/admin-jobs.js" defer></script>
@@ -427,6 +428,48 @@
       </div>
     </section>
   </main>
+
+  <dialog id="cancel-invoice-dialog" class="modal" aria-labelledby="ci-title">
+    <form id="cancel-invoice-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="ci-title">Cancel invoice</h2>
+        <p class="muted" id="ci-who"></p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <fieldset class="full ci-refund" id="ci-refund" hidden>
+        <legend>This invoice was paid. What about the money?</legend>
+        <label class="check" id="ci-opt-stripe"><input type="radio" name="refund" value="stripe"> <span>Refund <strong id="ci-amount"></strong> to the client’s card now through Stripe</span></label>
+        <label class="check"><input type="radio" name="refund" value="already"> <span>Already refunded (e.g. in Stripe or by e-transfer) — just record it</span></label>
+        <label class="check"><input type="radio" name="refund" value="none"> <span>No refund — cancel the invoice only</span></label>
+      </fieldset>
+      <div class="field full">
+        <label for="ci-reason">Reason / note <span class="optional">(only you see this)</span></label>
+        <textarea id="ci-reason" rows="3" maxlength="1000" placeholder="e.g. Client cancelled the clean; test payment refunded."></textarea>
+      </div>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="ci-close">Keep Invoice</button>
+        <button type="submit" class="btn btn-danger" id="ci-submit">Cancel Invoice</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="notes-dialog" class="modal" aria-labelledby="nd-title">
+    <form id="notes-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="nd-title">Notes</h2>
+        <p class="muted" id="nd-who"></p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field full">
+        <label for="nd-text">Private notes <span class="optional">(only you see these)</span></label>
+        <textarea id="nd-text" rows="5" maxlength="2000" placeholder="Anything to remember about this…"></textarea>
+      </div>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="nd-close">Close</button>
+        <button type="submit" class="btn btn-primary" id="nd-submit">Save Notes</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="client-file" class="modal client-file" aria-labelledby="cf-title">
     <button type="button" class="cf-close" id="cf-close" aria-label="Close client file">×</button>

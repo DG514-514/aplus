@@ -1,6 +1,7 @@
 'use strict';
 
-const money = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
+const CURRENCY = ((window.APLUS && window.APLUS.currency) || 'usd').toUpperCase();
+const money = new Intl.NumberFormat(CURRENCY === 'CAD' ? 'en-CA' : 'en-US', { style: 'currency', currency: CURRENCY });
 const STATUS_LABELS = { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' };
 
 const state = {
@@ -178,11 +179,13 @@ function renderOrders() {
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
       el('td', { 'data-label': 'Client' }, clientLink(o.client_id, o.client_name)),
       el('td', { 'data-label': 'Service' }, el('div', {},
-        el('strong', {}, o.service_type), el('span', { class: 'sub' }, `${o.plan} · ${o.location || '—'}`))),
+        el('strong', {}, o.service_type), el('span', { class: 'sub' }, `${o.plan} · ${o.location || '—'}`),
+        o.admin_notes ? el('span', { class: 'row-note' }, `📝 ${o.admin_notes}`) : null)),
       el('td', { 'data-label': 'Status' }, status),
       el('td', { 'data-label': 'Amount', class: 'num' }, money.format(o.amount_cents / 100)),
       el('td', {}, el('div', { class: 'row-actions' },
         orderInvoiceAction(o),
+        el('button', { type: 'button', class: 'link-btn', onclick: () => openNotes('order', o) }, o.admin_notes ? 'Notes ✎' : 'Add Note'),
         el('button', { type: 'button', class: 'link-btn', onclick: () => editOrder(o) }, 'Edit'),
         el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteOrder(o) }, 'Delete')))));
   }
@@ -220,7 +223,6 @@ function resetOrderForm() {
   form.reset();
   form.plan.value = 'Bi-Weekly';
   fillOrderServicePicker();
-  $('cf-close').addEventListener('click', closeClientFile);
   $('o-service-pick').value = '';
   state.editingOrder = null;
   $('order-form-title').textContent = 'Add an order';
@@ -747,7 +749,7 @@ async function submitInvoice(e) {
 
 function invoiceStatus(inv) {
   if (inv.status === 'paid') return ['paid', `Paid${inv.paid_method && inv.paid_method !== 'stripe' ? ` (${inv.paid_method})` : ''}`];
-  if (inv.status === 'void') return ['void', 'Void'];
+  if (inv.status === 'void') return inv.refunded_at ? ['void', 'Cancelled · Refunded'] : ['void', 'Cancelled'];
   if (inv.due_date && inv.due_date < todayIso()) return ['overdue', 'Overdue'];
   return ['open', 'Unpaid'];
 }
@@ -766,15 +768,19 @@ function renderInvoices() {
     if (inv.status === 'open') {
       actions.append(
         el('button', { type: 'button', class: 'link-btn', onclick: () => markInvoicePaid(inv) }, 'Mark Paid'),
-        el('button', { type: 'button', class: 'link-btn danger', onclick: () => voidInvoice(inv) }, 'Void'));
+        el('button', { type: 'button', class: 'link-btn danger', onclick: () => openCancelInvoice(inv) }, 'Cancel'));
     }
+    if (inv.status === 'paid') actions.append(el('button', { type: 'button', class: 'link-btn danger', onclick: () => openCancelInvoice(inv) }, 'Cancel / Refund'));
+    actions.prepend(el('button', { type: 'button', class: 'link-btn', onclick: () => openNotes('invoice', inv) }, inv.admin_notes ? 'Notes ✎' : 'Add Note'));
     if (inv.receipt_url) actions.append(el('a', { class: 'link-btn', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'Receipt'));
 
     tbody.append(el('tr', {},
       el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
       el('td', { 'data-label': 'Client' }, el('div', {},
         clientLink(inv.client_id, inv.client_name, true),
-        el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')))),
+        el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')),
+        inv.cancel_reason ? el('span', { class: 'row-note cancel' }, `Cancelled: ${inv.cancel_reason}`) : null,
+        inv.admin_notes ? el('span', { class: 'row-note' }, `📝 ${inv.admin_notes}`) : null)),
       el('td', { 'data-label': 'Service' }, inv.service_date
         ? el('div', {}, el('strong', {}, fmtDate(inv.service_date)),
           inv.service_time ? el('span', { class: 'sub' }, fmtTime(inv.service_time)) : null)
@@ -924,13 +930,74 @@ async function markInvoicePaid(inv) {
   } catch (err) { toast(err.message); }
 }
 
-async function voidInvoice(inv) {
-  if (!confirm(`Void ${inv.invoice_number} for ${inv.client_name}? It will disappear from their portal and can’t be paid.`)) return;
+/* ---------- Cancelling invoices ---------- */
+
+let cancellingInvoice = null;
+function openCancelInvoice(inv) {
+  cancellingInvoice = inv;
+  const form = $('cancel-invoice-form');
+  form.reset();
+  formError(form, '');
+  const paid = inv.status === 'paid';
+  $('ci-title').textContent = paid ? 'Cancel / refund invoice' : 'Cancel invoice';
+  $('ci-who').textContent = `${inv.invoice_number} · ${inv.client_name} · ${money.format(inv.amount_cents / 100)}${paid ? ' · paid' : ' · unpaid — it will disappear from the client’s portal'}`;
+  $('ci-refund').hidden = !paid;
+  $('ci-amount').textContent = money.format(inv.amount_cents / 100);
+  $('ci-opt-stripe').hidden = !inv.stripe_refundable;
+  if (paid) form.querySelector(`input[value="${inv.stripe_refundable ? 'stripe' : 'already'}"]`).checked = true;
+  $('cancel-invoice-dialog').showModal();
+  $('ci-reason').focus();
+}
+
+async function submitCancelInvoice(e) {
+  e.preventDefault();
+  const form = e.target;
+  const inv = cancellingInvoice;
+  const refund = inv.status === 'paid' ? (form.querySelector('input[name="refund"]:checked')?.value || 'none') : 'none';
+  if (refund === 'stripe' && !confirm(`Refund ${money.format(inv.amount_cents / 100)} to ${inv.client_name}’s card now? This sends real money back.`)) return;
+  const btn = $('ci-submit');
+  btn.disabled = true;
   try {
-    await api(`/invoices/${inv.id}/void`, 'POST');
-    toast(`${inv.invoice_number} voided.`);
+    const result = await api(`/invoices/${inv.id}/cancel`, 'POST', { reason: $('ci-reason').value.trim(), refund });
+    $('cancel-invoice-dialog').close();
     await refresh();
-  } catch (err) { toast(err.message); }
+    toast(result.refunded && refund === 'stripe' ? `${inv.invoice_number} cancelled and ${money.format(inv.amount_cents / 100)} refunded to the client’s card.` : `${inv.invoice_number} cancelled.`);
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------- Private notes on orders and invoices ---------- */
+
+let notesTarget = null;
+function openNotes(kind, item) {
+  notesTarget = { kind, item };
+  const form = $('notes-form');
+  formError(form, '');
+  $('nd-title').textContent = kind === 'order' ? `Notes — order ${item.order_number}` : `Notes — invoice ${item.invoice_number}`;
+  $('nd-who').textContent = item.client_name;
+  $('nd-text').value = item.admin_notes || '';
+  $('notes-dialog').showModal();
+  $('nd-text').focus();
+}
+
+async function submitNotes(e) {
+  e.preventDefault();
+  const { kind, item } = notesTarget;
+  const btn = $('nd-submit');
+  btn.disabled = true;
+  try {
+    await api(`/${kind === 'order' ? 'orders' : 'invoices'}/${item.id}/notes`, 'PATCH', { notes: $('nd-text').value });
+    $('notes-dialog').close();
+    await refresh();
+    toast('Notes saved.');
+  } catch (err) {
+    formError(e.target, err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* ---------- Suppliers / cleaners ---------- */
@@ -1207,6 +1274,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('invoice-search').addEventListener('input', renderInvoices);
   resetInvoiceForm();
   fillOrderServicePicker();
+  $('cf-close').addEventListener('click', closeClientFile);
+  $('cancel-invoice-form').addEventListener('submit', submitCancelInvoice);
+  $('ci-close').addEventListener('click', () => $('cancel-invoice-dialog').close());
+  $('notes-form').addEventListener('submit', submitNotes);
+  $('nd-close').addEventListener('click', () => $('notes-dialog').close());
   resetCleanerForm();
   $('cleaner-form').addEventListener('submit', submitCleaner);
   $('cleaner-cancel').addEventListener('click', resetCleanerForm);

@@ -321,7 +321,7 @@ test('invoices: owner sends, client pays through Stripe, others cannot see or pa
     const createCall = stripeCalls.find((c) => c.method === 'POST');
     assert.equal(createCall.body.get('line_items[0][price_data][unit_amount]'), '9800');
     assert.equal(createCall.body.get('line_items[1][price_data][unit_amount]'), '2050');
-    assert.equal(createCall.body.get('line_items[0][price_data][currency]'), 'cad');
+    assert.equal(createCall.body.get('line_items[0][price_data][currency]'), 'usd');
     assert.equal(createCall.body.get('customer_email'), 'alice@example.com');
     assert.match(createCall.body.get('success_url'), /\/portal\?paid=\{CHECKOUT_SESSION_ID\}$/);
 
@@ -957,4 +957,87 @@ test('invoicing an order links them, and the order shows the invoice status', as
   const linked = orders.find((o) => o.id === order.id);
   assert.equal(linked.invoice_number, invoiceNumber);
   assert.equal(linked.invoice_status, 'open');
+});
+
+test('prices are shown and charged in USD by default (STRIPE_CURRENCY can override)', async () => {
+  const cfg = await fetch(`${base}/js/config.js`);
+  assert.equal(cfg.status, 200);
+  assert.match(await cfg.text(), /window\.APLUS = \{"currency":"usd"\}/);
+  const stripe = require('../src/stripe');
+  assert.equal(stripe.formatMoney(16000), '$160.00');
+  process.env.STRIPE_CURRENCY = 'cad';
+  try {
+    assert.equal(stripe.currency(), 'cad');
+    assert.match(await (await fetch(`${base}/js/config.js`)).text(), /"currency":"cad"/);
+  } finally {
+    delete process.env.STRIPE_CURRENCY;
+  }
+});
+
+test('invoices can be cancelled (with optional Stripe refund) and orders/invoices take private notes', async () => {
+  const adminLogin = await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' });
+  const admin = { cookie: adminLogin.headers.get('set-cookie').split(';')[0] };
+  const patch = (url, body) => fetch(base + url, { method: 'PATCH', headers: { ...admin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const clientId = Number(addClient('refund@example.com', 'refundpass1', 'Re Fund'));
+  const make = async () => (await (await post('/api/admin/invoices', { clientId, items: [{ description: 'Studio Standard Clean', amount: '110' }], sendEmail: false }, admin)).json()).invoiceNumber;
+  const find = async (num) => (await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json()).invoices.find((i) => i.invoice_number === num);
+
+  // Unpaid → cancelled, with a reason; hidden from the client.
+  const a = await make();
+  const invA = await find(a);
+  assert.equal((await post(`/api/admin/invoices/${invA.id}/cancel`, { reason: 'Client changed plans' }, admin)).status, 200);
+  assert.equal((await find(a)).status, 'void');
+  assert.equal((await find(a)).cancel_reason, 'Client changed plans');
+  assert.equal((await post(`/api/admin/invoices/${invA.id}/cancel`, {}, admin)).status, 409);
+
+  // Paid by card → cancel + refund through Stripe.
+  const b = await make();
+  const invB = await find(b);
+  db.prepare("UPDATE invoices SET status = 'paid', paid_method = 'stripe', stripe_payment_intent = 'pi_test_123', paid_at = datetime('now') WHERE id = ?").run(invB.id);
+  assert.equal((await find(b)).stripe_refundable, 1);
+  process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+  const realFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.stripe.com/v1/refunds')) { calls.push(new URLSearchParams(opts.body)); return new Response('{"id":"re_123"}', { status: 200 }); }
+    return realFetch(url, opts);
+  };
+  try {
+    const res = await post(`/api/admin/invoices/${invB.id}/cancel`, { refund: 'stripe', reason: 'Test payment' }, admin);
+    assert.deepEqual(await res.json(), { ok: true, refunded: true, refundId: 're_123' });
+    assert.equal(calls[0].get('payment_intent'), 'pi_test_123');
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.STRIPE_SECRET_KEY;
+  }
+  const cancelledB = await find(b);
+  assert.equal(cancelledB.status, 'void');
+  assert.ok(cancelledB.refunded_at);
+
+  // Paid manually → can't refund via Stripe, but can record an existing refund.
+  const c = await make();
+  const invC = await find(c);
+  db.prepare("UPDATE invoices SET status = 'paid', paid_method = 'e-transfer', paid_at = datetime('now') WHERE id = ?").run(invC.id);
+  assert.equal((await post(`/api/admin/invoices/${invC.id}/cancel`, { refund: 'stripe' }, admin)).status, 400);
+  assert.equal((await post(`/api/admin/invoices/${invC.id}/cancel`, { refund: 'already' }, admin)).status, 200);
+  assert.ok((await find(c)).refunded_at);
+
+  // Client portal: unpaid-cancelled hidden, refunded ones shown as refunded.
+  const { cookie } = await login('refund@example.com', 'refundpass1');
+  const { invoices } = await (await fetch(`${base}/api/invoices`, { headers: { cookie } })).json();
+  assert.deepEqual(invoices.map((i) => i.invoice_number).sort(), [b, c].sort());
+  assert.ok(invoices.every((i) => i.refunded_at));
+
+  // Private notes.
+  assert.equal((await patch(`/api/admin/invoices/${invA.id}/notes`, { notes: 'Called client Oct 14' })).status, 200);
+  assert.equal((await find(a)).admin_notes, 'Called client Oct 14');
+  await post('/api/admin/orders', { clientId, date: '2026-11-12', service: 'Studio Standard Clean', plan: 'One-Time', amount: '110', status: 'scheduled' }, admin);
+  let { orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+  const order = orders.find((o) => o.client_id === clientId);
+  assert.equal((await patch(`/api/admin/orders/${order.id}/notes`, { notes: 'Gate code 4411' })).status, 200);
+  ({ orders } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json());
+  assert.equal(orders.find((o) => o.id === order.id).admin_notes, 'Gate code 4411');
+  // Notes never reach the client's portal.
+  const mine = await (await fetch(`${base}/api/orders`, { headers: { cookie } })).json();
+  assert.equal(JSON.stringify(mine).includes('Gate code'), false);
 });

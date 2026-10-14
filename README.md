@@ -38,7 +38,7 @@ be marked paid by hand (e-transfer, cash) or voided.
 |-------------------------|------------------------------------------------------------------------------------|
 | `STRIPE_SECRET_KEY`     | `sk_test_…` for testing (card 4242 4242 4242 4242) or `sk_live_…` for real payments |
 | `STRIPE_WEBHOOK_SECRET` | Optional but recommended: endpoint `https://<domain>/api/stripe/webhook`, event `checkout.session.completed` |
-| `STRIPE_CURRENCY`       | Optional, defaults to `cad`                                                         |
+| `STRIPE_CURRENCY`       | Optional, defaults to `usd` (set `cad` to charge in Canadian dollars)              |
 
 ### Ace (voice assistant)
 

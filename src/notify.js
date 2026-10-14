@@ -131,7 +131,8 @@ function sendTestEmail() {
   }));
 }
 
-const money = (cents) => new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100);
+// Same currency the website charges in (STRIPE_CURRENCY). Required lazily to avoid a load-order cycle.
+const money = (cents) => require('./stripe').formatMoney(cents);
 // "2026-10-12", "14:00" → "Monday, October 12, 2026 at 2:00 p.m."
 function formatService(date, time) {
   if (!date) return '';
