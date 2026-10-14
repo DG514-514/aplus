@@ -2,6 +2,8 @@
 
 const CURRENCY = ((window.APLUS && window.APLUS.currency) || 'usd').toUpperCase();
 const money = new Intl.NumberFormat(CURRENCY === 'CAD' ? 'en-CA' : 'en-US', { style: 'currency', currency: CURRENCY });
+const T = (s, v) => (window.I18N ? window.I18N.t(s, v) : s.replace(/\{(\w+)\}/g, (m, k) => (v && k in v ? v[k] : m)));
+const LOCALE = () => (window.I18N ? window.I18N.locale() : 'en-CA');
 const STATUS_LABELS = { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' };
 
 // service_date is a plain YYYY-MM-DD; parse as a local date so it doesn't shift by timezone.
@@ -10,7 +12,7 @@ const parseDate = (iso) => {
   return new Date(y, m - 1, d);
 };
 const fmtDate = (iso, opts = { month: 'short', day: 'numeric', year: 'numeric' }) =>
-  parseDate(iso).toLocaleDateString('en-CA', opts);
+  parseDate(iso).toLocaleDateString(LOCALE(), opts);
 const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -48,13 +50,13 @@ let currentFilter = 'all';
 
 function renderProfile(client) {
   const first = client.name.split(' ')[0];
-  document.getElementById('greeting').textContent = `Welcome back, ${first}`;
+  document.getElementById('greeting').textContent = T('Welcome back, {name}', { name: first });
   document.getElementById('user-name').textContent = client.name;
   document.getElementById('avatar').textContent = client.name
     .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   document.getElementById('pw-username').value = client.email;
 
-  const where = [client.residence, client.room && `Room ${client.room}`].filter(Boolean).join(' · ');
+  const where = [client.residence, client.room && T('Room {room}', { room: client.room })].filter(Boolean).join(' · ');
   document.getElementById('location-line').textContent = where;
 
   const details = document.getElementById('account-details');
@@ -65,7 +67,7 @@ function renderProfile(client) {
     ['Phone', client.phone || '—'],
     ['Residence', where || '—'],
     ['Client since', new Date(client.created_at.replace(' ', 'T') + 'Z')
-      .toLocaleDateString('en-CA', { month: 'long', year: 'numeric' })],
+      .toLocaleDateString(LOCALE(), { month: 'long', year: 'numeric' })],
   ];
   for (const [term, value] of rows) {
     details.append(el('div', {}, el('dt', {}, term), el('dd', {}, value)));
@@ -95,7 +97,7 @@ function renderStats(orders) {
   const latest = orders.find((o) => o.status !== 'cancelled');
   document.getElementById('stat-plan').textContent = latest ? latest.plan : '—';
   document.getElementById('stat-plan-meta').textContent = upcoming.length
-    ? `${upcoming.length} upcoming visit${upcoming.length === 1 ? '' : 's'}`
+    ? T(upcoming.length === 1 ? '{n} upcoming visit' : '{n} upcoming visits', { n: upcoming.length })
     : '';
 }
 
@@ -108,7 +110,7 @@ function renderOrders() {
   empty.hidden = rows.length > 0;
   if (!rows.length) {
     empty.textContent = allOrders.length
-      ? `No ${currentFilter === 'scheduled' ? 'upcoming' : currentFilter} orders.`
+      ? T(`No ${currentFilter === 'scheduled' ? 'upcoming' : currentFilter} orders.`)
       : 'You don’t have any orders yet. Once your first clean is booked it will appear here.';
     return;
   }
@@ -116,12 +118,12 @@ function renderOrders() {
   for (const o of rows) {
     const service = el('td', { 'data-label': 'Service' }, el('div', {},
       el('strong', {}, o.service_type),
-      el('span', { class: 'sub' }, `${o.plan} plan`),
+      el('span', { class: 'sub' }, T('{plan} plan', { plan: T(o.plan) })),
       o.notes ? el('span', { class: 'note' }, o.notes) : null));
 
     tbody.append(el('tr', { class: `status-${o.status}` },
       el('td', { 'data-label': 'Date' }, el('time', { datetime: o.service_date }, fmtDate(o.service_date)),
-        o.service_time ? el('span', { class: 'sub' }, new Date(2000, 0, 1, ...o.service_time.split(':').map(Number)).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })) : null),
+        o.service_time ? el('span', { class: 'sub' }, new Date(2000, 0, 1, ...o.service_time.split(':').map(Number)).toLocaleTimeString(LOCALE(), { hour: 'numeric', minute: '2-digit' })) : null),
       el('td', { 'data-label': 'Order', class: 'mono' }, o.order_number),
       service,
       el('td', { 'data-label': 'Location' }, o.location || '—'),
@@ -199,7 +201,7 @@ async function payInvoice(inv, btn) {
     window.location.assign(url);
   } catch (err) {
     btn.disabled = false;
-    btn.textContent = `Pay ${money.format(inv.amount_cents / 100)}`;
+    btn.textContent = T('Pay {amount}', { amount: money.format(inv.amount_cents / 100) });
     showPayNotice('error', err.message);
   }
 }
@@ -223,7 +225,7 @@ function renderInvoices(invoices, paymentsEnabled) {
   if (open.length) {
     const due = open.reduce((sum, i) => sum + i.amount_cents, 0);
     document.getElementById('balance-title').textContent =
-      `You have ${open.length} unpaid invoice${open.length === 1 ? '' : 's'} · ${money.format(due / 100)} due`;
+      T(open.length === 1 ? 'You have {n} unpaid invoice · {amount} due' : 'You have {n} unpaid invoices · {amount} due', { n: open.length, amount: money.format(due / 100) });
     document.getElementById('balance-sub').textContent = paymentsEnabled
       ? 'Pay securely online by card in under a minute.'
       : 'Please contact us to arrange payment.';
@@ -235,22 +237,22 @@ function renderInvoices(invoices, paymentsEnabled) {
       ...inv.items.map((it) => el('tr', {}, el('td', {}, it.description), el('td', {}, money.format(it.amount_cents / 100)))),
       el('tr', { class: 'total' }, el('td', {}, 'Total'), el('td', {}, money.format(inv.amount_cents / 100)))));
 
-    const meta = [`Issued ${fmtDate(inv.created_at.slice(0, 10))}`];
+    const meta = [T('Issued {date}', { date: fmtDate(inv.created_at.slice(0, 10)) })];
     let service = null;
     if (inv.service_date) {
       let when = fmtDate(inv.service_date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       if (inv.service_time) {
         const [h, m] = inv.service_time.split(':').map(Number);
-        when += ` at ${new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}`;
+        when = T('{date} at {time}', { date: when, time: new Date(2000, 0, 1, h, m).toLocaleTimeString(LOCALE(), { hour: 'numeric', minute: '2-digit' }) });
       }
-      service = el('p', { class: 'invoice-service' }, '🗓️ ', el('strong', {}, 'Service: '), when);
+      service = el('p', { class: 'invoice-service' }, '🗓️ ', el('strong', {}, `${T('Service:')} `), when);
     }
-    if (inv.status === 'open' && inv.due_date) meta.push(`Due ${fmtDate(inv.due_date)}`);
-    if (inv.status === 'paid' && inv.paid_at) meta.push(`Paid ${fmtDate(inv.paid_at.slice(0, 10))}`);
+    if (inv.status === 'open' && inv.due_date) meta.push(T('Due {date}', { date: fmtDate(inv.due_date) }));
+    if (inv.status === 'paid' && inv.paid_at) meta.push(T('Paid {date}', { date: fmtDate(inv.paid_at.slice(0, 10)) }));
 
     const actions = el('div', { class: 'invoice-actions' });
     if (inv.status === 'open' && paymentsEnabled) {
-      const btn = el('button', { type: 'button', class: 'btn btn-primary' }, `Pay ${money.format(inv.amount_cents / 100)}`);
+      const btn = el('button', { type: 'button', class: 'btn btn-primary' }, T('Pay {amount}', { amount: money.format(inv.amount_cents / 100) }));
       btn.addEventListener('click', () => payInvoice(inv, btn));
       actions.append(btn, el('span', { class: 'secure' }, '🔒 Secure checkout by Stripe'));
     } else if (inv.status === 'open') {
@@ -262,7 +264,7 @@ function renderInvoices(invoices, paymentsEnabled) {
 
     list.append(el('article', { class: `invoice-card${inv.status === 'open' ? ' is-open' : ''}` },
       el('div', { class: 'invoice-top' },
-        el('div', {}, el('h3', {}, `Invoice ${inv.invoice_number}`), el('span', { class: 'sub' }, meta.join(' · '))),
+        el('div', {}, el('h3', {}, T('Invoice {number}', { number: inv.invoice_number })), el('span', { class: 'sub' }, meta.join(' · '))),
         el('span', { class: `badge badge-${cls}` }, label)),
       service,
       lines,
@@ -284,7 +286,7 @@ async function handlePaymentReturn() {
   history.replaceState(null, '', '/portal');
   try {
     const result = await api('/api/invoices/confirm', { method: 'POST', body: JSON.stringify({ sessionId }) });
-    if (result.paid) showPayNotice('success', `Thank you! Invoice ${result.invoiceNumber} is paid. A receipt has been emailed to you.`);
+    if (result.paid) showPayNotice('success', T('Thank you! Invoice {number} is paid. A receipt has been emailed to you.', { number: result.invoiceNumber }));
     else showPayNotice('success', 'Thanks! Your payment is processing and will show here shortly.');
   } catch (err) {
     showPayNotice('success', 'Thanks! Your payment is processing and will show here shortly.');
@@ -321,7 +323,10 @@ async function setupAppStrip() {
 
 function renderTerms(t) {
   const body = document.getElementById('terms-body');
-  body.replaceChildren(el('p', { class: 'muted' }, `${t.company} · ${t.title} · Version ${t.version}`));
+  body.replaceChildren(el('p', { class: 'muted' }, T('{company} · Terms & Conditions of Service · Version {version}', t)));
+  if (window.I18N && window.I18N.lang === 'es') {
+    body.append(el('p', { class: 'alert alert-info' }, T('Courtesy translation. The English version of these Terms & Conditions is the one that applies and prevails if there is any difference.')));
+  }
   for (const section of t.sections) {
     const wrap = el('section', {}, el('h3', {}, section.heading));
     for (const block of section.blocks) {
@@ -343,7 +348,7 @@ async function requireTermsAcceptance(client) {
   const agree = document.getElementById('terms-agree');
   const submit = document.getElementById('terms-submit');
   const alertBox = form.querySelector('.alert');
-  nameInput.placeholder = `e.g. ${client.name}`;
+  nameInput.placeholder = T('e.g. {name}', { name: client.name });
 
   const update = () => { submit.disabled = !(agree.checked && nameInput.value.trim().length >= 2); };
   nameInput.addEventListener('input', update);
@@ -392,14 +397,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (err) {
     if (err.message === 'Signed out') return;
     const box = document.getElementById('orders-error');
-    box.textContent = `We couldn’t load your account. ${err.message} Please refresh to try again.`;
+    box.textContent = T('We couldn’t load your account. {message} Please refresh to try again.', { message: T(err.message) });
     box.hidden = false;
     return;
   }
 
   await handlePaymentReturn();
   loadInvoices().catch((err) => {
-    if (err.message !== 'Signed out') showPayNotice('error', `We couldn’t load your invoices. ${err.message}`);
+    if (err.message !== 'Signed out') showPayNotice('error', T('We couldn’t load your invoices. {message}', { message: T(err.message) }));
   });
 
   try {
@@ -411,7 +416,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (err.message === 'Signed out') return;
     document.getElementById('orders-body').replaceChildren();
     const box = document.getElementById('orders-error');
-    box.textContent = `We couldn’t load your orders. ${err.message} Please refresh to try again.`;
+    box.textContent = T('We couldn’t load your orders. {message} Please refresh to try again.', { message: T(err.message) });
     box.hidden = false;
   }
 });

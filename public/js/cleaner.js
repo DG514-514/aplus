@@ -4,6 +4,7 @@
 (() => {
   const { el, whenText, sizeText, photos, compressImage } = window.JobsUI;
   const $ = (id) => document.getElementById(id);
+  const T = (s, v) => (window.I18N ? window.I18N.t(s, v) : s.replace(/\{(\w+)\}/g, (m, k) => (v && k in v ? v[k] : m)));
   const token = window.location.pathname.split('/').filter(Boolean)[1] || '';
   const base = `/api/cleaner/${encodeURIComponent(token)}`;
   let job;
@@ -51,7 +52,7 @@
       sizeText(job) || job.service ? el('div', {}, el('dt', {}, 'Unit'), el('dd', {}, [sizeText(job), job.service].filter(Boolean).join(' · '))) : null);
     const card = el('article', { class: 'job-card' },
       el('div', { class: 'job-head' },
-        el('div', {}, el('h1', { class: 'cleaner-title' }, `Job ${job.job_number}`), el('span', { class: 'sub' }, `For ${job.company}`)),
+        el('div', {}, el('h1', { class: 'cleaner-title' }, T('Job {number}', { number: job.job_number })), el('span', { class: 'sub' }, T('For {company}', { company: job.company }))),
         job.submitted_at ? el('span', { class: 'badge badge-completed' }, 'Submitted') : el('span', { class: 'badge badge-pending' }, 'To do')),
       facts,
       job.instructions ? el('p', { class: 'job-instructions' }, job.instructions) : null);
@@ -86,12 +87,12 @@
         let done = 0;
         try {
           for (const file of files) {
-            btn.textContent = `Uploading ${done + 1} of ${files.length}…`;
+            btn.textContent = T('Uploading {i} of {n}…', { i: done + 1, n: files.length });
             const blob = await compressImage(file);
             await api(`/photos?kind=${kind}`, 'POST', blob, { 'Content-Type': blob.type || 'image/jpeg' });
             done += 1;
           }
-          toast(`${done} ${label.toLowerCase()} photo${done === 1 ? '' : 's'} uploaded.`);
+          toast(T(done === 1 ? '{n} photo uploaded.' : '{n} photos uploaded.', { n: done }));
         } catch (err) {
           toast(err.message);
         }

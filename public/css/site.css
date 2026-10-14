@@ -93,7 +93,7 @@ p { margin: 0 0 1em; }
 .nav-toggle { display: none; background: none; border: 0; padding: 8px; cursor: pointer; color: var(--forest); }
 .nav-toggle svg { width: 28px; height: 28px; }
 
-@media (max-width: 960px) {
+@media (max-width: 1180px) {
   .nav-toggle { display: block; }
   .nav-menu {
     position: absolute; top: 76px; left: 0; right: 0;
@@ -105,8 +105,22 @@ p { margin: 0 0 1em; }
   .nav-links a:not(.btn) { display: block; padding: 10px 0; }
   .nav-actions { flex-direction: column; align-items: stretch; margin-top: 12px; }
 }
-@media (min-width: 961px) {
+@media (min-width: 1181px) {
   .nav-menu { display: flex; align-items: center; gap: 32px; }
+}
+/* Spanish labels are longer: use the menu button up to a wider screen. */
+@media (min-width: 1181px) and (max-width: 1360px) {
+  html[lang="es"] .nav-toggle { display: block; }
+  html[lang="es"] .nav-menu {
+    position: absolute; top: 76px; left: 0; right: 0;
+    background: var(--cream); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+    display: none; padding: 16px 24px 24px;
+  }
+  html[lang="es"] .nav-menu.is-open { display: block; }
+  html[lang="es"] .nav-links { flex-direction: column; align-items: stretch; gap: 4px; }
+  html[lang="es"] .nav-links a:not(.btn) { display: block; padding: 10px 0; }
+  html[lang="es"] .nav-actions { flex-direction: column; align-items: stretch; margin-top: 12px; }
+  html[lang="es"] .nav > .lang-toggle { order: 0; margin-left: auto; margin-right: -12px; }
 }
 
 /* ---------- Hero ---------- */
@@ -333,7 +347,7 @@ p { margin: 0 0 1em; }
 .badge-completed { background: var(--sage-100); color: var(--sage-700); }
 .badge-cancelled { background: #eee; color: #777; }
 
-.not-found { text-align: center; min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.not-found { position: relative; text-align: center; min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .not-found-logo { height: 70px; width: auto; margin-bottom: 32px; }
 .not-found h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); text-transform: none; }
 
@@ -353,3 +367,24 @@ p { margin: 0 0 1em; }
 
 /* iOS gives date/time inputs an intrinsic width that can overflow narrow grid columns. */
 input[type="date"], input[type="time"] { min-width: 0; -webkit-appearance: none; appearance: none; min-height: 48px; }
+
+/* ---------- Language switch (EN | ES) ---------- */
+.lang-toggle { display: inline-flex; flex: none; border: 1.5px solid var(--line); border-radius: 999px; padding: 2px; background: #fff; }
+.lang-toggle button { border: 0; background: none; font: 700 .78rem/1 var(--font-head); letter-spacing: .06em; color: var(--muted); padding: 7px 11px; border-radius: 999px; cursor: pointer; }
+.lang-toggle button[aria-pressed="true"] { background: var(--sage); color: #fff; cursor: default; }
+.lang-toggle button:not([aria-pressed="true"]):hover { color: var(--forest); }
+.lang-toggle button:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+.nav > .lang-toggle { order: 3; }
+.lang-toggle-corner { position: absolute; top: 16px; right: 16px; z-index: 5; }
+@media (min-width: 1181px) { .nav-menu { margin-left: auto; } }
+@media (max-width: 1180px) { .nav > .lang-toggle { order: 0; margin-left: auto; margin-right: -12px; } }
+/* Spanish runs longer: keep the headline and menu from overflowing. */
+html[lang="es"] .hero h1 { font-size: clamp(1.7rem, 7.2vw, 3.6rem); overflow-wrap: break-word; }
+html[lang="es"] .auth-quote { font-size: clamp(1.7rem, 3vw, 2.6rem); }
+.nav-links a, .nav-actions .btn { white-space: nowrap; }
+.brand { flex: none; }
+@media (min-width: 1361px) {
+  html[lang="es"] .nav { gap: 14px; }
+  html[lang="es"] .nav-menu { gap: 20px; }
+  html[lang="es"] .nav-links { gap: 14px; }
+}

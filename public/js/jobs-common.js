@@ -17,10 +17,11 @@ window.JobsUI = (() => {
     return node;
   }
 
+  const LOCALE = () => (window.I18N ? window.I18N.locale() : 'en-CA');
   const parseDate = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
-  const fmtDate = (iso, opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) => parseDate(iso).toLocaleDateString('en-CA', opts);
-  const fmtTime = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }); };
-  const fmtStamp = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const fmtDate = (iso, opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) => parseDate(iso).toLocaleDateString(LOCALE(), opts);
+  const fmtTime = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(LOCALE(), { hour: 'numeric', minute: '2-digit' }); };
+  const fmtStamp = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toLocaleString(LOCALE(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   function whenText(j) {
     let t = fmtDate(j.service_date);
@@ -85,7 +86,7 @@ window.JobsUI = (() => {
     const strip = (kind, label) => {
       const list = j.photos.filter((p) => p.kind === kind);
       return el('div', { class: 'job-photo-group' },
-        el('h4', {}, `${label} (${list.length})`),
+        el('h4', {}, window.I18N ? window.I18N.t(`${label} ({n})`, { n: list.length }) : `${label} (${list.length})`),
         list.length ? el('div', { class: 'job-photos' }, ...list.map((p) => el('figure', {},
           el('a', { href: src(p), target: '_blank', rel: 'noopener' }, el('img', { src: src(p), alt: `${label} photo`, loading: 'lazy' })),
           onDelete ? el('button', { type: 'button', class: 'job-photo-del', 'aria-label': 'Remove photo', onclick: () => onDelete(p) }, '×') : null)))

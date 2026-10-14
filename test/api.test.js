@@ -1208,3 +1208,17 @@ test('payment and job-completed alerts always reach info@aplus-cleaning-solution
     delete process.env.NOTIFY_EMAIL;
   }
 });
+
+test('English/Spanish switch is on the website, login, sign-up, portal and cleaner pages', async () => {
+  const js = await fetch(`${base}/js/i18n.js`);
+  assert.equal(js.status, 200);
+  const src = await js.text();
+  for (const phrase of ['Request My Quote', 'Welcome back, {name}', 'Pay {amount}', '1. Scope of Services']) assert.ok(src.includes(`'${phrase}'`), phrase);
+  for (const page of ['/', '/login', '/signup', '/does-not-exist']) {
+    assert.match(await (await fetch(base + page)).text(), /<script src="\/js\/i18n\.js" defer><\/script>/, page);
+  }
+  // The portal and cleaner pages load it too (checked from the files, since they need a login or a link).
+  for (const file of ['portal.html', 'cleaner.html']) {
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), /\/js\/i18n\.js/, file);
+  }
+});
