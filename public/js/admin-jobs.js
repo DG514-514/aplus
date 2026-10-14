@@ -14,8 +14,6 @@
     jobsState.payables = data.payables;
     const attention = data.jobs.filter((j) => j.awaiting_owner).length;
     const unpaid = data.jobs.filter((j) => j.status === 'completed' && !j.supplier_paid_at).length;
-    $('count-jobs').textContent = attention ? `${attention} new` : '';
-    $('count-jobs').classList.toggle('count-alert', attention > 0);
     $('jf-attention').textContent = attention || '';
     $('jf-unpaid').textContent = unpaid || '';
     renderPayables();
