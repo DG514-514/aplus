@@ -782,7 +782,7 @@ function renderInvoices() {
     if (inv.receipt_url) actions.append(el('a', { class: 'link-btn', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'Receipt'));
 
     tbody.append(el('tr', {},
-      el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
+      el('td', { 'data-label': 'Invoice', class: 'mono' }, el('button', { type: 'button', class: 'inv-link', title: 'View invoice details', onclick: () => openInvoiceDetail(inv) }, inv.invoice_number)),
       el('td', { 'data-label': 'Client' }, el('div', {},
         clientLink(inv.client_id, inv.client_name, true),
         el('span', { class: 'sub' }, inv.items.map((it) => it.description).join(', ')),
@@ -892,8 +892,8 @@ async function openClientFile(id) {
       el('thead', {}, el('tr', {}, ...['Invoice', 'Items', 'Sent', 'Status', 'Total', ''].map((h) => el('th', {}, h)))),
       el('tbody', {}, ...invs.map((inv) => {
         const [cls, label] = invoiceStatus(inv);
-        return el('tr', {},
-          el('td', { 'data-label': 'Invoice', class: 'mono' }, inv.invoice_number),
+        return el('tr', { class: 'cf-inv-row', title: 'View invoice details', onclick: (e) => { if (!e.target.closest('a')) openInvoiceDetail(inv); } },
+          el('td', { 'data-label': 'Invoice', class: 'mono' }, el('button', { type: 'button', class: 'inv-link', onclick: (e) => { e.stopPropagation(); openInvoiceDetail(inv); } }, inv.invoice_number)),
           el('td', { 'data-label': 'Items' }, inv.items.map((it) => it.description).join(', ')),
           el('td', { 'data-label': 'Sent' }, fmtDate(inv.created_at.slice(0, 10))),
           el('td', { 'data-label': 'Status' }, el('span', { class: `badge badge-${cls}` }, label)),
@@ -925,6 +925,94 @@ async function openClientFile(id) {
 
 function stat(label, value, meta) {
   return el('div', { class: 'cf-stat' }, el('span', { class: 'cf-stat-label' }, label), el('strong', {}, value), el('span', { class: 'sub' }, meta));
+}
+
+/* ---------- Invoice details ---------- */
+
+const fmtLongDate = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+};
+const fmtUtcStamp = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toLocaleString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+// Everything about one invoice: service date/time, location, line items, linked order, supplier job, payment history.
+async function openInvoiceDetail(inv) {
+  const body = $('invoice-detail-body');
+  const order = inv.order_id ? state.orders.find((o) => o.id === inv.order_id) : null;
+  const client = state.clients.find((c) => c.id === inv.client_id);
+  const [cls, label] = invoiceStatus(inv);
+  const fact = (term, ...value) => (value.some((v) => v != null && v !== '') ? el('div', {}, el('dt', {}, term), el('dd', {}, ...value)) : null);
+  const where = order?.location || [client?.residence, client?.room && `Unit/Rm ${client.room}`].filter(Boolean).join(', ');
+  const size = client && [client.bedrooms && (client.bedrooms === 'Studio' ? 'Studio' : `${client.bedrooms} bed`), client.bathrooms && `${client.bathrooms} bath`].filter(Boolean).join(' · ');
+
+  // Payment history, oldest first.
+  const timeline = [[inv.created_at, `Invoice sent to ${inv.client_email}`]];
+  if (inv.paid_at) timeline.push([inv.paid_at, inv.paid_method === 'stripe' ? 'Paid by card (Stripe)' : `Marked paid (${inv.paid_method || 'manual'})`]);
+  if (inv.cancelled_at) timeline.push([inv.cancelled_at, `Cancelled${inv.cancel_reason ? ` — ${inv.cancel_reason}` : ''}`]);
+  if (inv.refunded_at) timeline.push([inv.refunded_at, 'Refunded']);
+
+  const actions = el('div', { class: 'cf-actions' });
+  const closeThen = (fn) => () => { $('invoice-detail').close(); fn(); };
+  if (inv.status === 'open') {
+    actions.append(
+      el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: closeThen(() => markInvoicePaid(inv)) }, 'Mark Paid'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => openCancelInvoice(inv)) }, 'Cancel Invoice'));
+  }
+  if (inv.status === 'paid') actions.append(el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => openCancelInvoice(inv)) }, 'Cancel / Refund'));
+  actions.append(el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => openNotes('invoice', inv)) }, inv.admin_notes ? 'Edit Private Note' : 'Add Private Note'));
+  if (inv.receipt_url) actions.append(el('a', { class: 'btn btn-outline btn-sm', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'Stripe Receipt'));
+
+  body.replaceChildren(
+    el('div', { class: 'cf-head' },
+      el('div', {},
+        el('h2', { id: 'id-title' }, `Invoice ${inv.invoice_number}`),
+        el('p', { class: 'sub' }, inv.client_name, ' · ', el('a', { href: `mailto:${inv.client_email}` }, inv.client_email))),
+      el('div', { class: 'id-total' }, el('span', { class: `badge badge-${cls}` }, label), el('strong', {}, money.format(inv.amount_cents / 100)))),
+    el('h3', { class: 'cf-section' }, 'Service'),
+    el('dl', { class: 'id-facts' },
+      fact('Service date', inv.service_date ? fmtLongDate(inv.service_date) : (order ? fmtLongDate(order.service_date) : 'Not set')),
+      fact('Time', inv.service_time ? fmtTime(inv.service_time) : (order?.service_time ? fmtTime(order.service_time) : 'Not set')),
+      fact('Location', where || null),
+      fact('Unit size', size || null),
+      fact('Plan', order?.plan || null),
+      fact('Order', order ? `${order.order_number} · ${order.service_type} · ${order.status[0].toUpperCase()}${order.status.slice(1)}` : null),
+      fact('Order notes', order?.notes || null)),
+    el('h3', { class: 'cf-section' }, 'Items'),
+    el('table', { class: 'invoice-lines id-lines' }, el('tbody', {},
+      ...inv.items.map((it) => el('tr', {}, el('td', {}, it.description), el('td', {}, money.format(it.amount_cents / 100)))),
+      el('tr', { class: 'total' }, el('td', {}, 'Total'), el('td', {}, money.format(inv.amount_cents / 100))))),
+    el('h3', { class: 'cf-section' }, 'Billing'),
+    el('dl', { class: 'id-facts' },
+      fact('Sent', fmtUtcStamp(inv.created_at)),
+      fact('Due', inv.due_date ? fmtLongDate(inv.due_date) : 'On receipt'),
+      fact('Status', label),
+      fact('Note to client', inv.notes || null),
+      fact('Private note', inv.admin_notes ? `📝 ${inv.admin_notes}` : null)),
+    el('h3', { class: 'cf-section' }, 'History'),
+    el('ul', { class: 'id-timeline' }, ...timeline.map(([at, text]) => el('li', {}, el('span', { class: 'sub' }, fmtUtcStamp(at)), text))),
+    el('div', { id: 'id-job' }),
+    actions);
+  $('invoice-detail').showModal();
+  body.parentElement.scrollTop = 0;
+
+  // The supplier job for the same client and service date, if there is one.
+  const serviceDate = inv.service_date || order?.service_date;
+  if (!serviceDate) return;
+  try {
+    const { jobs } = await api('/jobs');
+    const job = jobs.find((j) => j.client_id === inv.client_id && j.service_date === serviceDate && j.status !== 'cancelled');
+    const slot = document.getElementById('id-job');
+    if (!job || !slot) return;
+    slot.replaceChildren(
+      el('h3', { class: 'cf-section' }, 'Supplier job'),
+      el('dl', { class: 'id-facts' },
+        fact('Job', `${job.job_number} · ${job.cleaner_company ? `${job.cleaner_name} (${job.cleaner_company})` : job.cleaner_name}`),
+        fact('Status', job.status === 'completed' ? `Completed ${fmtUtcStamp(job.completed_at)} by ${job.completed_by}` : ({ requested: 'Awaiting supplier', accepted: 'Confirmed — pending completion' })[job.status]),
+        fact('Photos', job.photos.length ? `${job.photos.filter((p) => p.kind === 'before').length} before · ${job.photos.filter((p) => p.kind === 'after').length} after` : null),
+        fact('Supplier pay', `${money.format(job.pay_cents / 100)} · ${job.supplier_paid_at ? 'paid' : job.status === 'completed' ? 'owed' : 'not yet due'}`)),
+      job.photos.length ? el('div', { class: 'id-photos' }, ...job.photos.slice(0, 8).map((p) => el('a', { href: `/api/admin/jobs/photos/${p.id}`, target: '_blank', rel: 'noopener' },
+        el('img', { src: `/api/admin/jobs/photos/${p.id}`, alt: `${p.kind} photo`, loading: 'lazy' })))) : null);
+  } catch { /* the job is a nice-to-have here */ }
 }
 
 async function markInvoicePaid(inv) {
@@ -1282,6 +1370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   resetInvoiceForm();
   fillOrderServicePicker();
   $('cf-close').addEventListener('click', closeClientFile);
+  $('id-close').addEventListener('click', () => $('invoice-detail').close());
   $('cancel-invoice-form').addEventListener('submit', submitCancelInvoice);
   $('ci-close').addEventListener('click', () => $('cancel-invoice-dialog').close());
   $('notes-form').addEventListener('submit', submitNotes);

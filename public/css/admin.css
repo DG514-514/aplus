@@ -165,3 +165,27 @@ option.add-new { font-weight: 700; }
 .ci-refund legend { font-weight: 700; padding: 0 6px; color: var(--forest); }
 .ci-refund .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 .ci-refund [hidden] { display: none; }
+
+/* ---------- Invoice details ---------- */
+.inv-link { border: 0; background: none; padding: 0; font: inherit; color: var(--sage-700); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.inv-link:hover { color: var(--forest); }
+.cf-inv-row { cursor: pointer; }
+.cf-inv-row:hover td { background: var(--sage-50); }
+.invoice-detail { width: min(760px, calc(100% - 24px)); max-height: calc(100dvh - 32px); padding: 0; }
+.invoice-detail[open] { display: block; overflow: auto; }
+#invoice-detail-body { padding: 28px 30px 30px; }
+@media (max-width: 700px) { #invoice-detail-body { padding: 20px 16px; } }
+.id-total { display: grid; justify-items: end; gap: 6px; }
+.id-total strong { font-family: var(--font-head); font-size: 1.6rem; color: var(--forest); }
+.id-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 10px 20px; margin: 0; }
+.id-facts div { display: grid; gap: 2px; }
+.id-facts dt { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.id-facts dd { margin: 0; font-weight: 600; white-space: pre-wrap; }
+.id-lines { margin-top: 2px; }
+.id-lines .total td { font-weight: 800; border-bottom: 0; }
+.id-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.id-timeline li { display: flex; gap: 12px; flex-wrap: wrap; padding-left: 14px; border-left: 3px solid var(--sage-100); }
+.id-timeline .sub { color: var(--muted); min-width: 170px; }
+.id-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin-top: 10px; }
+.id-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; }
+#invoice-detail-body .cf-head { padding-right: 44px; }
