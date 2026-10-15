@@ -168,3 +168,12 @@
 .cal-sync .btn { justify-self: start; }
 .cal-reset { border: 0; background: none; padding: 6px 4px; font: 700 .85rem var(--font-body); color: var(--muted); text-decoration: underline; cursor: pointer; }
 .cal-reset:hover { color: var(--danger); }
+
+/* Minimize / expand job cards (owner Jobs tab) */
+.job-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.job-toggle { border: 1.5px solid var(--line); background: #fff; color: var(--forest); font: 700 .8rem/1 var(--font-body); padding: 7px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.job-toggle:hover { border-color: var(--sage); }
+.job-toggle:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+.job-more { display: grid; gap: 12px; }
+.job-more[hidden] { display: none; }
+.jobs-bulk { display: flex; justify-content: flex-end; gap: 14px; margin: -4px 0 10px; }

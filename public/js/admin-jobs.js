@@ -260,34 +260,68 @@
     }
     if (j.status === 'cancelled') actions.append(el('button', { type: 'button', class: 'link-btn danger', onclick: () => deleteJob(j) }, 'Delete'));
 
-    const node = el('article', { class: `job-card status-${j.status}` },
+    // Minimized cards show only the summary (job, address, when, unit, client, supplier, pay, who completed it).
+    const minimized = isMinimized(j);
+    const more = el('div', { class: 'job-more', id: `job-more-${j.id}` });
+    const toggle = el('button', {
+      type: 'button', class: 'job-toggle', 'aria-expanded': String(!minimized), 'aria-controls': `job-more-${j.id}`,
+      onclick: () => { setMinimized(j, !isMinimized(j)); renderJobs(); },
+    }, minimized ? `▾ Show ${moreLabel(j)}` : '▴ Minimize');
+
+    const node = el('article', { class: `job-card status-${j.status}${minimized ? ' is-minimized' : ''}` },
       el('div', { class: 'job-head' },
         el('div', {}, el('h3', {}, `Job ${j.job_number}`), el('span', { class: 'sub' }, `Created ${fmtStamp(j.created_at)}${j.accepted_at ? ` · accepted ${fmtStamp(j.accepted_at)}` : ''}`)),
-        el('span', { class: `badge ${cls}` }, label)),
-      details(j, 'owner'),
-      j.instructions ? el('p', { class: 'job-instructions' }, j.instructions) : null);
+        el('div', { class: 'job-head-right' }, el('span', { class: `badge ${cls}` }, label), toggle)),
+      details(j, 'owner'));
 
     if (j.status === 'accepted' && (j.cleaner_submitted_at || j.cleaner_token)) {
       append(node, el('p', { class: 'job-done' }, ...(j.cleaner_submitted_at
         ? ['📷 Cleaner ', el('strong', {}, j.cleaner_signed_by), ` submitted photos ${fmtStamp(j.cleaner_submitted_at)} — waiting for the supplier to approve.`]
         : ['🔗 Supplier sent a cleaner photo link — photos appear below as they’re uploaded.'])));
     }
+    if (j.status === 'completed') append(node, el('p', { class: 'job-done' }, `✓ Completed ${fmtStamp(j.completed_at)} by `, el('strong', {}, j.completed_by)));
+
+    append(more, j.instructions ? el('p', { class: 'job-instructions' }, j.instructions) : null);
     if (j.status === 'completed') {
-      append(node, 
-        el('p', { class: 'job-done' }, `✓ Completed ${fmtStamp(j.completed_at)} by `, el('strong', {}, j.completed_by)),
+      append(more,
         j.completion_notes ? el('p', { class: 'job-instructions' }, j.completion_notes) : null,
         el('p', { class: `job-payment ${j.supplier_paid_at ? 'paid' : 'unpaid'}` }, j.supplier_paid_at
           ? `💵 Paid to supplier ${fmtStamp(j.supplier_paid_at)}${j.supplier_paid_ref ? ` · Ref: ${j.supplier_paid_ref}` : ''}`
           : `Outstanding to supplier: ${money.format(j.pay_cents / 100)}`));
     }
-    if (j.photos.length || j.status === 'completed') append(node, photos(j, (p) => `/api/admin/jobs/photos/${p.id}`));
+    if (j.photos.length || j.status === 'completed') append(more, photos(j, (p) => `/api/admin/jobs/photos/${p.id}`));
     if (j.status !== 'cancelled') {
-      append(node, thread(j, 'owner', async (text) => {
+      append(more, thread(j, 'owner', async (text) => {
         try { await api(`/jobs/${j.id}/messages`, 'POST', { body: text }); toast('Reply sent to the supplier.'); await reload(); } catch (err) { toast(err.message); }
       }));
     }
-    if (actions.children.length) append(node, actions);
+    if (actions.children.length) append(more, actions);
+    more.hidden = minimized;
+    append(node, more);
     return node;
+  }
+
+  /* ---------- Minimize / expand job cards ---------- */
+
+  // Completed and cancelled jobs start minimized; open jobs start expanded. Each choice is remembered.
+  const MIN_KEY = 'aplus_jobs_minimized';
+  const minState = (() => { try { return JSON.parse(localStorage.getItem(MIN_KEY)) || {}; } catch { return {}; } })();
+  const isMinimized = (j) => (j.id in minState ? minState[j.id] : ['completed', 'cancelled'].includes(j.status));
+  function setMinimized(j, value) {
+    minState[j.id] = value;
+    try { localStorage.setItem(MIN_KEY, JSON.stringify(minState)); } catch { /* storage blocked */ }
+  }
+  function setAllMinimized(value) {
+    for (const j of jobsState.jobs) minState[j.id] = value;
+    try { localStorage.setItem(MIN_KEY, JSON.stringify(minState)); } catch { /* storage blocked */ }
+    renderJobs();
+  }
+  function moreLabel(j) {
+    const parts = [];
+    if (j.photos.length) parts.push(`${j.photos.length} photo${j.photos.length === 1 ? '' : 's'}`);
+    if (j.messages.length) parts.push(`${j.messages.length} message${j.messages.length === 1 ? '' : 's'}`);
+    if (j.status === 'completed' && !j.supplier_paid_at) parts.push('Mark Paid');
+    return parts.length ? parts.join(' · ') : 'details';
   }
 
   async function cancelJob(j) {
@@ -321,6 +355,7 @@
     $('j-pay').addEventListener('input', updateHints);
     $('j-client').addEventListener('change', onClientChange);
     $('job-search').addEventListener('input', renderJobs);
+    document.querySelectorAll('[data-jobs-minimize]').forEach((b) => b.addEventListener('click', () => setAllMinimized(b.dataset.jobsMinimize === 'all')));
     $('cal-supplier').addEventListener('change', (e) => { cal.supplier = e.target.value; renderJobs(); });
     document.querySelectorAll('[data-jobview]').forEach((b) => b.addEventListener('click', () => {
       cal.view = b.dataset.jobview;
