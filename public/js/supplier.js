@@ -2,12 +2,16 @@
 
 // Supplier portal: review and accept job requests, comment, upload before/after photos, mark complete.
 (() => {
-  const { el, money, fmtStamp, status, details, thread, photos, compressImage } = window.JobsUI;
+  const { el, money, fmtStamp, fmtDate, status, details, thread, photos, compressImage, calendar, calendarSync, todayIso } = window.JobsUI;
   // DOM append() would print 'null' for skipped pieces, so drop them first.
   const append = (node, ...kids) => node.append(...kids.filter((k) => k != null && k !== false));
   const $ = (id) => document.getElementById(id);
   let jobs = [];
   let filter = 'requested';
+  const VIEW_KEY = 'aplus_sup_view';
+  let view = (() => { try { return localStorage.getItem(VIEW_KEY) === 'calendar' ? 'calendar' : 'list'; } catch { return 'list'; } })();
+  let calDay = todayIso();
+  let calMonth = calDay.slice(0, 7);
 
   async function api(path, method = 'GET', body, headers) {
     const res = await fetch(`/api/supplier${path}`, {
@@ -50,6 +54,10 @@
   const reload = () => load().catch((err) => { if (err.message !== 'Signed out') toast(err.message); });
 
   function render() {
+    $('list-view').hidden = view !== 'list';
+    $('calendar-view').hidden = view !== 'calendar';
+    document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+    if (view === 'calendar') { renderCalendar(); return; }
     const list = $('jobs-list');
     const rows = jobs.filter((j) => (filter === 'completed' ? ['completed', 'cancelled'].includes(j.status) : j.status === filter));
     if (filter !== 'completed') rows.sort((a, b) => a.service_date.localeCompare(b.service_date));
@@ -60,6 +68,33 @@
       accepted: 'No jobs waiting to be completed.',
       completed: 'No completed jobs yet.',
     }[filter];
+  }
+
+  // Calendar view: month grid (agenda on phones); tapping a day shows that day's job cards below.
+  function renderCalendar() {
+    $('cal').replaceChildren(calendar({
+      jobs, viewer: 'supplier', month: calMonth, selected: calDay,
+      onMonth: (ym) => { calMonth = ym; render(); },
+      onDay: (iso) => {
+        calDay = iso;
+        calMonth = iso.slice(0, 7);
+        render();
+        $('cal-day').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+    }));
+    const dayJobs = jobs.filter((j) => j.service_date === calDay).sort((a, b) => (a.time_start || '99').localeCompare(b.time_start || '99'));
+    const title = `${calDay === todayIso() ? 'Today · ' : ''}${fmtDate(calDay, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+    $('cal-day').replaceChildren(
+      el('h3', { class: 'cal-day-title' }, title, el('span', { class: 'sub' }, ` · ${dayJobs.length || 'no'} job${dayJobs.length === 1 ? '' : 's'}`)),
+      dayJobs.length ? el('div', { class: 'jobs-list' }, ...dayJobs.map(card)) : el('p', { class: 'empty' }, 'No jobs on this day.'));
+    if (!$('cal-sync').childElementCount) {
+      $('cal-sync').append(calendarSync({
+        title: 'Your jobs in your phone calendar',
+        intro: 'See your A+ jobs next to your own appointments in Google Calendar, iPhone or Outlook. They update automatically.',
+        fetchLinks: (reset) => api('/calendar-link', 'POST', { reset }),
+        toast,
+      }));
+    }
   }
 
   function card(j) {
@@ -217,6 +252,11 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => { filter = t.dataset.filter; selectTab(); render(); }));
+    document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+      view = b.dataset.view;
+      try { localStorage.setItem(VIEW_KEY, view); } catch { /* storage blocked */ }
+      render();
+    }));
     $('logout-btn').addEventListener('click', async () => {
       try { await api('/logout', 'POST'); } finally { window.location.assign('/supplier'); }
     });

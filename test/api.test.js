@@ -1222,3 +1222,70 @@ test('English/Spanish switch is on the website, login, sign-up, portal and clean
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8'), /\/js\/i18n\.js/, file);
   }
 });
+
+test('calendar feeds: each supplier gets a private .ics of their own jobs; the owner gets all jobs', async () => {
+  const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };
+  const soon = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+  const mkSupplier = async (name, email) => {
+    await post('/api/admin/cleaners', { name, company: `${name} Co`, email, active: true, services: [] }, admin);
+    const { cleaners } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const c = cleaners.find((x) => x.email === email);
+    await post(`/api/admin/cleaners/${c.id}/portal`, { password: 'portal-pass-1' }, admin);
+    const cookie = (await post('/api/supplier/login', { email, password: 'portal-pass-1' })).headers.get('set-cookie').split(';')[0];
+    return { id: c.id, sup: { cookie } };
+  };
+  const a = await mkSupplier('Vera Cal', 'vera@cal.test');
+  const b = await mkSupplier('Omar Cal', 'omar@cal.test');
+  const j1 = await (await post('/api/admin/jobs', { cleanerId: a.id, clientName: 'Hidden Client', address: '12 Palm Ave, Miami', unit: '4', bedrooms: '2', bathrooms: '1', serviceDate: soon, timeStart: '09:30', timeEnd: '12:00', pay: '120', instructions: 'Gate code 55; ring twice, then wait' }, admin)).json();
+  await post(`/api/supplier/jobs/${j1.id}/accept`, {}, a.sup);
+  const j2 = await (await post('/api/admin/jobs', { cleanerId: a.id, address: '3 Long Rd', serviceDate: soon, pay: '90' }, admin)).json();
+  await (await post('/api/admin/jobs', { cleanerId: b.id, address: '77 Other St', serviceDate: soon, pay: '80' }, admin)).json();
+
+  assert.equal((await post('/api/supplier/calendar-link', {})).status, 401);
+  const link = await (await post('/api/supplier/calendar-link', {}, a.sup)).json();
+  assert.match(link.url, /\/cal\/[A-Za-z0-9_-]{20,}\.ics$/);
+  assert.match(link.webcal, /^webcal:/);
+  assert.match(link.google, /^https:\/\/calendar\.google\.com\/calendar\/render\?cid=webcal/);
+  assert.equal((await (await post('/api/supplier/calendar-link', {}, a.sup)).json()).url, link.url);
+
+  const path = new URL(link.url, base).pathname;
+  const res = await fetch(base + path);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/calendar/);
+  const ics = await res.text();
+  assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
+  assert.match(ics, /END:VCALENDAR\r\n$/);
+  assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, 2); // only this supplier's two jobs
+  const day = soon.replace(/-/g, '');
+  assert.ok(ics.includes(`DTSTART:${day}T093000`));
+  assert.ok(ics.includes(`DTEND:${day}T120000`));
+  assert.ok(ics.includes(`DTSTART;VALUE=DATE:${day}`)); // job without a time is all-day
+  assert.ok(ics.includes(`UID:job-${j1.id}@`));
+  assert.ok(ics.includes(`UID:job-${j2.id}@`));
+  assert.ok(ics.includes('STATUS:CONFIRMED') && ics.includes('STATUS:TENTATIVE'));
+  const unfolded = ics.replace(/\r\n /g, '');
+  assert.ok(unfolded.includes('Gate code 55\\; ring twice\\, then wait'));
+  assert.ok(!unfolded.includes('Hidden Client')); // client name not in the supplier feed
+  assert.ok(!unfolded.includes('77 Other St'));
+  assert.ok(ics.split('\r\n').every((line) => Buffer.byteLength(line) <= 75));
+
+  // Reset makes the old link stop working.
+  const fresh = await (await post('/api/supplier/calendar-link', { reset: true }, a.sup)).json();
+  assert.notEqual(fresh.url, link.url);
+  assert.equal((await fetch(base + path)).status, 404);
+  assert.equal((await fetch(`${base}/cal/not-a-real-token-123456789.ics`)).status, 404);
+
+  // Owner feed: all suppliers' jobs, with supplier and client names; supplier session can't get it.
+  assert.equal((await post('/api/admin/jobs/calendar-link', {}, a.sup)).status, 401);
+  const own = await (await post('/api/admin/jobs/calendar-link', {}, admin)).json();
+  const ownIcs = (await (await fetch(base + new URL(own.url, base).pathname)).text()).replace(/\r\n /g, '');
+  assert.ok(ownIcs.includes('77 Other St') && ownIcs.includes('12 Palm Ave'));
+  assert.ok(ownIcs.includes('Client: Hidden Client'));
+  assert.ok(ownIcs.includes('Vera Cal Co'));
+
+  // Turning a supplier's portal off stops their feed.
+  const freshPath = new URL(fresh.url, base).pathname;
+  assert.equal((await fetch(base + freshPath)).status, 200);
+  await fetch(`${base}/api/admin/cleaners/${a.id}/portal`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...admin }, body: '{}' });
+  assert.equal((await fetch(base + freshPath)).status, 404);
+});
