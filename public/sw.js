@@ -1,7 +1,7 @@
 /* A+ Cleaning Solutions service worker: fast loading, offline fallback and push notifications. */
 'use strict';
 
-const VERSION = 'v5';
+const VERSION = 'v6';
 const STATIC_CACHE = `aplus-static-${VERSION}`;
 const PAGE_CACHE = `aplus-pages-${VERSION}`;
 const PRECACHE = [
@@ -72,7 +72,8 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(request)),
+        // Pages link versioned files (?v=…); offline, any cached copy of the same file will do.
+        .catch(() => caches.match(request, { ignoreSearch: true })),
     );
     return;
   }

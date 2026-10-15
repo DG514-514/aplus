@@ -1215,7 +1215,7 @@ test('English/Spanish switch is on the website, login, sign-up, portal and clean
   const src = await js.text();
   for (const phrase of ['Request My Quote', 'Welcome back, {name}', 'Pay {amount}', '1. Scope of Services']) assert.ok(src.includes(`'${phrase}'`), phrase);
   for (const page of ['/', '/login', '/signup', '/does-not-exist']) {
-    assert.match(await (await fetch(base + page)).text(), /<script src="\/js\/i18n\.js" defer><\/script>/, page);
+    assert.match(await (await fetch(base + page)).text(), /<script src="\/js\/i18n\.js\?v=[0-9a-f]{10}" defer><\/script>/, page);
   }
   // The portal and cleaner pages load it too (checked from the files, since they need a login or a link).
   for (const file of ['portal.html', 'cleaner.html']) {
@@ -1288,4 +1288,23 @@ test('calendar feeds: each supplier gets a private .ics of their own jobs; the o
   assert.equal((await fetch(base + freshPath)).status, 200);
   await fetch(`${base}/api/admin/cleaners/${a.id}/portal`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...admin }, body: '{}' });
   assert.equal((await fetch(base + freshPath)).status, 404);
+});
+
+test('pages link CSS/JS with a version tag so browsers never keep a stale copy', async () => {
+  const pages = ['/', '/login', '/signup', '/supplier', '/admin', '/offline', '/nope-404'];
+  const versions = new Set();
+  for (const page of pages) {
+    const html = await (await fetch(base + page)).text();
+    const links = [...html.matchAll(/(?:href|src)="(\/(?:css|js)\/[^"]+)"/g)].map((m) => m[1]);
+    assert.ok(links.length, page);
+    for (const link of links) {
+      assert.match(link, /\?v=[0-9a-f]{10}$/, `${page} ${link}`);
+      versions.add(link.split('?v=')[1]);
+    }
+  }
+  assert.equal(versions.size, 1);
+  // The versioned file is still served normally.
+  const css = await fetch(`${base}/css/site.css?v=${[...versions][0]}`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /text\/css/);
 });

@@ -1,6 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
@@ -346,9 +348,31 @@ app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 
 /* ---------- Pages ---------- */
 
+// Every release tags the CSS/JS links in each page with a version (a hash of the files), so browsers and
+// installed apps always load the latest styles and scripts instead of an old cached copy.
+const ASSET_VERSION = (() => {
+  const hash = crypto.createHash('sha1');
+  for (const dir of ['css', 'js']) {
+    for (const name of fs.readdirSync(path.join(PUBLIC_DIR, dir)).sort()) hash.update(name).update(fs.readFileSync(path.join(PUBLIC_DIR, dir, name)));
+  }
+  return hash.digest('hex').slice(0, 10);
+})();
+const HTML_PAGES = new Set(fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html')));
+const pageCache = new Map();
+function sendPage(res, name, status = 200) {
+  let html = pageCache.get(name);
+  if (!html) {
+    html = fs.readFileSync(path.join(PUBLIC_DIR, name), 'utf8')
+      .replace(/(href|src)="(\/(?:css|js)\/[^"?]+\.(?:css|js))"/g, `$1="$2?v=${ASSET_VERSION}"`);
+    pageCache.set(name, html);
+  }
+  if (!res.get('Cache-Control')) res.set('Cache-Control', 'no-cache');
+  res.status(status).type('html').send(html);
+}
+
 app.get('/admin', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(PUBLIC_DIR, admin.isAdmin(req) ? 'admin.html' : 'admin-login.html'));
+  sendPage(res, admin.isAdmin(req) ? 'admin.html' : 'admin-login.html');
 });
 
 app.get(['/login.html', '/signup.html', '/portal.html', '/admin.html', '/admin-login.html'], (req, res) => res.redirect(301, req.path.replace(/(-login)?\.html$/, '')));
@@ -357,7 +381,7 @@ app.get(['/login.html', '/signup.html', '/portal.html', '/admin.html', '/admin-l
 app.get('/ace', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!admin.isAdmin(req)) return res.redirect('/admin?next=/ace');
-  res.sendFile(path.join(PUBLIC_DIR, 'ace.html'));
+  sendPage(res, 'ace.html');
 });
 
 app.get('/terms', (_req, res) => res.type('html').send(termsPages.publicPage()));
@@ -367,7 +391,7 @@ app.get('/admin/agreements/:id', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!admin.isAdmin(req)) return res.redirect('/admin');
   const record = terms.getRecord(Number(req.params.id));
-  if (!record) return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
+  if (!record) return sendPage(res, '404.html', 404);
   res.type('html').send(termsPages.recordPage(record));
 });
 
@@ -382,23 +406,23 @@ app.get('/cal/:file', (req, res) => {
 
 app.get('/c/:token', (_req, res) => {
   res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
-  res.sendFile(path.join(PUBLIC_DIR, 'cleaner.html'));
+  sendPage(res, 'cleaner.html');
 });
 
 // Supplier portal: job requests, photos and completion.
 app.get('/supplier', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(PUBLIC_DIR, jobs.isSupplier(req) ? 'supplier.html' : 'supplier-login.html'));
+  sendPage(res, jobs.isSupplier(req) ? 'supplier.html' : 'supplier-login.html');
 });
 
 app.get('/signup', (req, res) => {
   if (req.client) return res.redirect('/portal');
-  res.sendFile(path.join(PUBLIC_DIR, 'signup.html'));
+  sendPage(res, 'signup.html');
 });
 
 app.get('/login', (req, res) => {
   if (req.client) return res.redirect('/portal');
-  res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
+  sendPage(res, 'login.html');
 });
 
 // App home-screen entry: signed-in clients go to their portal, everyone else to the website.
@@ -410,7 +434,7 @@ app.get('/app', (req, res) => {
 app.get('/portal', (req, res) => {
   if (!req.client) return res.redirect('/login');
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(PUBLIC_DIR, 'portal.html'));
+  sendPage(res, 'portal.html');
 });
 
 // Site settings the browser needs (currency for displaying prices).
@@ -425,9 +449,16 @@ app.get('/sw.js', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'sw.js'));
 });
 
+// Plain pages (/, /index.html, /offline, …) get the same versioned asset links.
+app.get(/^\/([\w-]*)(\.html)?$/, (req, res, next) => {
+  const name = `${req.params[0] || 'index'}.html`;
+  if (!HTML_PAGES.has(name)) return next();
+  sendPage(res, name);
+});
+
 app.use(express.static(PUBLIC_DIR, { extensions: ['html'], index: 'index.html' }));
 
-app.use((_req, res) => res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html')));
+app.use((_req, res) => sendPage(res, '404.html', 404));
 
 if (require.main === module) {
   app.listen(PORT, () => {
