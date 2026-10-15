@@ -3,10 +3,15 @@
 // Owner dashboard → Jobs: send job requests to suppliers, follow replies, see photos, track supplier payments.
 // Uses admin.js globals: $, api, toast, formError, state, SERVICES.
 (() => {
-  const { el, money, fmtStamp, status, details, thread, photos } = window.JobsUI;
+  const { el, money, fmtStamp, fmtDate, status, details, thread, photos, calendar, calendarSync, todayIso, shortTime } = window.JobsUI;
   // DOM append() would print 'null' for skipped pieces, so drop them first.
   const append = (node, ...kids) => node.append(...kids.filter((k) => k != null && k !== false));
   const jobsState = { jobs: [], payables: [], filter: 'open', editing: null };
+  const VIEW_KEY = 'aplus_admin_jobview';
+  const cal = {
+    view: (() => { try { return localStorage.getItem(VIEW_KEY) === 'calendar' ? 'calendar' : 'list'; } catch { return 'list'; } })(),
+    day: todayIso(), month: todayIso().slice(0, 7), supplier: '',
+  };
 
   async function loadJobs() {
     const data = await api('/jobs');
@@ -174,12 +179,70 @@
   };
 
   function renderJobs() {
+    $('admin-list-view').hidden = cal.view !== 'list';
+    $('admin-calendar-view').hidden = cal.view !== 'calendar';
+    document.querySelectorAll('[data-jobview]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.jobview === cal.view)));
+    if (cal.view === 'calendar') { renderCalendar(); return; }
     const q = $('job-search').value.trim().toLowerCase();
     const rows = jobsState.jobs.filter(FILTERS[jobsState.filter])
       .filter((j) => !q || [j.job_number, j.address, j.unit, j.client_name, j.cleaner_name, j.cleaner_company, j.completed_by, j.cleaner_signed_by].join(' ').toLowerCase().includes(q));
     if (jobsState.filter === 'open') rows.sort((a, b) => a.service_date.localeCompare(b.service_date));
     $('admin-jobs-list').replaceChildren(...rows.map(card));
     $('admin-jobs-empty').hidden = rows.length > 0;
+  }
+
+  /* ---------- Calendar ---------- */
+
+  function renderCalendar() {
+    // Supplier filter: everyone who has a job, plus active suppliers.
+    const sel = $('cal-supplier');
+    const names = new Map();
+    for (const c of state.cleaners || []) names.set(String(c.id), c.company ? `${c.name} (${c.company})` : c.name);
+    for (const j of jobsState.jobs) if (!names.has(String(j.cleaner_id))) names.set(String(j.cleaner_id), j.cleaner_company ? `${j.cleaner_name} (${j.cleaner_company})` : j.cleaner_name);
+    sel.replaceChildren(el('option', { value: '' }, 'All suppliers'), ...[...names].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => el('option', { value: id }, name)));
+    sel.value = names.has(cal.supplier) ? cal.supplier : '';
+
+    const jobs = jobsState.jobs.filter((j) => !sel.value || String(j.cleaner_id) === sel.value);
+    // Chips show the supplier too, so double bookings stand out.
+    const who = (j) => j.cleaner_name.split(' ')[0];
+    $('admin-cal').replaceChildren(calendar({
+      jobs, viewer: 'owner', month: cal.month, selected: cal.day,
+      label: (j) => [j.time_start ? shortTime(j.time_start) : null, sel.value ? null : who(j), j.address.split(',')[0]].filter(Boolean).join(' · '),
+      onMonth: (ym) => { cal.month = ym; renderJobs(); },
+      onDay: (iso) => {
+        cal.day = iso;
+        cal.month = iso.slice(0, 7);
+        renderJobs();
+        $('admin-cal-day').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+    }));
+
+    const dayJobs = jobs.filter((j) => j.service_date === cal.day).sort((a, b) => (a.time_start || '99').localeCompare(b.time_start || '99'));
+    const newJob = el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => newJobOn(cal.day) }, '＋ New Job on This Date');
+    $('admin-cal-day').replaceChildren(
+      el('div', { class: 'cal-day-head' },
+        el('h3', { class: 'cal-day-title' }, `${cal.day === todayIso() ? 'Today · ' : ''}${fmtDate(cal.day, { weekday: 'long', month: 'long', day: 'numeric' })}`,
+          el('span', { class: 'sub' }, ` · ${dayJobs.length || 'no'} job${dayJobs.length === 1 ? '' : 's'}`)),
+        cal.day >= todayIso() ? newJob : null),
+      dayJobs.length ? el('div', { class: 'jobs-list' }, ...dayJobs.map(card)) : el('p', { class: 'empty' }, 'No jobs on this day.'));
+
+    if (!$('admin-cal-sync').childElementCount) {
+      $('admin-cal-sync').append(calendarSync({
+        title: 'All jobs in your phone calendar',
+        intro: 'Every supplier job (with the supplier’s name) in your Google Calendar, iPhone or Outlook, kept up to date automatically.',
+        fetchLinks: (reset) => api('/jobs/calendar-link', 'POST', { reset }),
+        toast,
+      }));
+    }
+  }
+
+  // Start a new job request already set to the chosen date (and supplier, if one is filtered).
+  function newJobOn(iso) {
+    resetForm();
+    $('j-date').value = iso;
+    if (cal.supplier) { $('j-cleaner').value = cal.supplier; suggestPay(); }
+    $('job-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('j-cleaner').focus({ preventScroll: true });
   }
 
   function card(j) {
@@ -258,6 +321,12 @@
     $('j-pay').addEventListener('input', updateHints);
     $('j-client').addEventListener('change', onClientChange);
     $('job-search').addEventListener('input', renderJobs);
+    $('cal-supplier').addEventListener('change', (e) => { cal.supplier = e.target.value; renderJobs(); });
+    document.querySelectorAll('[data-jobview]').forEach((b) => b.addEventListener('click', () => {
+      cal.view = b.dataset.jobview;
+      try { localStorage.setItem(VIEW_KEY, cal.view); } catch { /* storage blocked */ }
+      renderJobs();
+    }));
     document.querySelectorAll('[data-jobfilter]').forEach((t) => t.addEventListener('click', () => { jobsState.filter = t.dataset.jobfilter; selectFilter(); renderJobs(); }));
     // Refresh supplier/client dropdowns whenever the Jobs tab is opened.
     document.querySelector('.admin-tabs .tab[data-view="jobs"]').addEventListener('click', () => { fillSelects(); reload(); });

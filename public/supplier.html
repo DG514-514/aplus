@@ -49,14 +49,25 @@
     <section class="panel">
       <div class="panel-head">
         <h2>Jobs</h2>
-        <div class="tabs" role="tablist" aria-label="Filter jobs">
+        <div class="view-switch" role="group" aria-label="View">
+          <button type="button" data-view="list" aria-pressed="true">☰ List</button>
+          <button type="button" data-view="calendar" aria-pressed="false">📅 Calendar</button>
+        </div>
+      </div>
+      <div id="list-view">
+        <div class="tabs list-tabs" role="tablist" aria-label="Filter jobs">
           <button role="tab" type="button" class="tab" aria-selected="true" data-filter="requested">New requests <span class="count" id="c-requested"></span></button>
           <button role="tab" type="button" class="tab" aria-selected="false" data-filter="accepted">Pending completion <span class="count" id="c-accepted"></span></button>
           <button role="tab" type="button" class="tab" aria-selected="false" data-filter="completed">Completed</button>
         </div>
+        <div class="jobs-list" id="jobs-list"></div>
+        <p class="empty" id="jobs-empty" hidden></p>
       </div>
-      <div class="jobs-list" id="jobs-list"></div>
-      <p class="empty" id="jobs-empty" hidden></p>
+      <div id="calendar-view" hidden>
+        <div id="cal"></div>
+        <div class="cal-day" id="cal-day"></div>
+        <div id="cal-sync"></div>
+      </div>
     </section>
   </main>
 

@@ -110,5 +110,127 @@ window.JobsUI = (() => {
     return file;
   }
 
-  return { el, money, fmtDate, fmtTime, fmtStamp, whenText, sizeText, status, details, thread, photos, compressImage };
+  /* ---------- Calendar ---------- */
+
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayIso = () => isoOf(new Date());
+
+  // Colour group for a job on the calendar.
+  function calKind(j) {
+    if (j.status === 'requested') return 'req';
+    if (j.status === 'accepted') return j.cleaner_submitted_at ? 'review' : 'conf';
+    if (j.status === 'completed') return j.supplier_paid_at ? 'paid' : 'unpaid';
+    return 'cxl';
+  }
+  const LEGEND = [['req', 'New request'], ['conf', 'Confirmed'], ['review', 'Ready for review'], ['unpaid', 'Completed · unpaid'], ['paid', 'Completed · paid'], ['cxl', 'Cancelled']];
+
+  const shortTime = (hhmm) => fmtTime(hhmm).replace(':00', '').replace(/\s?([ap])\.?m\.?/i, (m, x) => x.toLowerCase());
+  const street = (j) => j.address.split(',')[0];
+
+  // Month calendar (grid on wide screens, agenda list on phones).
+  // opts: { jobs, viewer, month: 'YYYY-MM', selected: 'YYYY-MM-DD', onMonth(ym), onDay(iso), label(j) }
+  function calendar({ jobs, viewer, month, selected, onMonth, onDay, label }) {
+    const [y, m] = month.split('-').map(Number);
+    const first = new Date(y, m - 1, 1);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const byDay = {};
+    for (const j of jobs) (byDay[j.service_date] = byDay[j.service_date] || []).push(j);
+    for (const list of Object.values(byDay)) list.sort((a, b) => (a.time_start || '99').localeCompare(b.time_start || '99'));
+    const today = todayIso();
+    const chipText = label || ((j) => [j.time_start ? shortTime(j.time_start) : null, street(j)].filter(Boolean).join(' · '));
+    const chip = (j) => el('button', {
+      type: 'button', class: `cal-chip k-${calKind(j)}`,
+      title: [`Job ${j.job_number}`, whenText(j), j.address, viewer === 'owner' ? (j.cleaner_company || j.cleaner_name) : null, status(j, viewer)[1]].filter(Boolean).join(' · '),
+      onclick: (e) => { e.stopPropagation(); onDay(j.service_date, j); },
+    }, chipText(j));
+
+    // Month totals (cancelled jobs don't count).
+    const inMonth = jobs.filter((j) => j.service_date.startsWith(month) && j.status !== 'cancelled');
+    const done = inMonth.filter((j) => j.status === 'completed');
+    const earned = done.reduce((sum, j) => sum + j.pay_cents, 0);
+    const owed = done.filter((j) => !j.supplier_paid_at).reduce((sum, j) => sum + j.pay_cents, 0);
+    const summary = inMonth.length
+      ? `${inMonth.length} job${inMonth.length === 1 ? '' : 's'} · ${done.length} completed · ${money.format(earned / 100)} ${viewer === 'owner' ? 'supplier cost' : 'earned'} · ${money.format(owed / 100)} ${viewer === 'owner' ? 'owed' : 'still owed'}`
+      : 'No jobs this month';
+
+    const shift = (n) => { const d = new Date(y, m - 1 + n, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); };
+    const head = el('div', { class: 'cal-head' },
+      el('div', { class: 'cal-nav' },
+        el('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Previous month', onclick: () => shift(-1) }, '‹'),
+        el('h3', { class: 'cal-title' }, first.toLocaleDateString(LOCALE(), { month: 'long', year: 'numeric' })),
+        el('button', { type: 'button', class: 'cal-arrow', 'aria-label': 'Next month', onclick: () => shift(1) }, '›'),
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { onMonth(today.slice(0, 7)); onDay(today); } }, 'Today')),
+      el('p', { class: 'cal-summary' }, summary));
+
+    const legend = el('ul', { class: 'cal-legend', 'aria-label': 'Colour key' },
+      ...LEGEND.map(([k, text]) => el('li', {}, el('span', { class: `cal-dot k-${k}`, 'aria-hidden': 'true' }), text)));
+
+    // Grid: weeks start on Sunday.
+    const grid = el('div', { class: 'cal-grid', role: 'grid' });
+    const weekday = new Date(2023, 0, 1); // a Sunday
+    for (let i = 0; i < 7; i += 1) {
+      grid.append(el('div', { class: 'cal-wd', role: 'columnheader' }, new Date(weekday.getFullYear(), 0, 1 + i).toLocaleDateString(LOCALE(), { weekday: 'short' })));
+    }
+    const lead = first.getDay();
+    const cells = Math.ceil((lead + daysInMonth) / 7) * 7;
+    for (let i = 0; i < cells; i += 1) {
+      const d = new Date(y, m - 1, 1 - lead + i);
+      const iso = isoOf(d);
+      const list = byDay[iso] || [];
+      const out = d.getMonth() !== m - 1;
+      const shown = list.slice(0, 3);
+      grid.append(el('div', {
+        class: `cal-cell${out ? ' out' : ''}${iso === today ? ' today' : ''}${iso === selected ? ' selected' : ''}`,
+        role: 'gridcell', tabindex: '0', 'aria-label': `${fmtDate(iso, { weekday: 'long', month: 'long', day: 'numeric' })}: ${list.length} job${list.length === 1 ? '' : 's'}`,
+        onclick: () => onDay(iso), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onDay(iso); } },
+      },
+      el('span', { class: 'cal-num' }, String(d.getDate())),
+      ...shown.map(chip),
+      list.length > shown.length ? el('span', { class: 'cal-more' }, `+${list.length - shown.length} more`) : null));
+    }
+
+    // Agenda (phones): only days in this month that have jobs, plus today.
+    const agenda = el('div', { class: 'cal-agenda' });
+    const days = Object.keys(byDay).filter((iso) => iso.startsWith(month));
+    if (today.startsWith(month) && !days.includes(today)) days.push(today);
+    days.sort();
+    const tomorrow = isoOf(new Date(Date.now() + 864e5));
+    for (const iso of days) {
+      const list = byDay[iso] || [];
+      const name = iso === today ? 'Today' : iso === tomorrow ? 'Tomorrow' : fmtDate(iso, { weekday: 'short', month: 'short', day: 'numeric' });
+      agenda.append(el('div', { class: `cal-aday${iso === selected ? ' selected' : ''}${iso === today ? ' today' : ''}` },
+        el('button', { type: 'button', class: 'cal-adate', onclick: () => onDay(iso) }, name, list.length ? null : el('span', { class: 'sub' }, ' · no jobs')),
+        list.length ? el('div', { class: 'cal-alist' }, ...list.map(chip)) : null));
+    }
+    if (!days.length) agenda.append(el('p', { class: 'empty' }, 'No jobs this month.'));
+
+    return el('div', { class: 'cal' }, head, legend, grid, agenda);
+  }
+
+  // "Add to my phone calendar" box: fetch(reset) returns { url, webcal, google }.
+  function calendarSync({ title, intro, fetchLinks, toast }) {
+    const box = el('div', { class: 'cal-sync' });
+    const show = async (reset) => {
+      try {
+        const links = await fetchLinks(reset);
+        const copy = async () => {
+          try { await navigator.clipboard.writeText(links.url); toast('Calendar link copied.'); } catch { window.prompt('Copy this calendar link:', links.url); }
+        };
+        box.replaceChildren(
+          el('h4', {}, title),
+          el('p', { class: 'sub' }, 'Jobs appear in your calendar and update by themselves. Keep this link private — anyone with it can see the jobs.'),
+          el('div', { class: 'job-link-actions' },
+            el('a', { class: 'btn btn-primary btn-sm', href: links.google, target: '_blank', rel: 'noopener' }, 'Google Calendar'),
+            el('a', { class: 'btn btn-outline btn-sm', href: links.webcal }, 'iPhone / Mac / Outlook'),
+            el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: copy }, 'Copy Link'),
+            el('button', { type: 'button', class: 'cal-reset', onclick: () => { if (window.confirm('Make a new link? Calendars using the old link stop updating.')) show(true); } }, 'Reset link')),
+          el('p', { class: 'sub' }, 'Google can take a few hours to show changes; iPhone and Outlook usually refresh within the hour.'));
+      } catch (err) { toast(err.message); }
+    };
+    box.append(el('h4', {}, title), el('p', { class: 'sub' }, intro),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => show(false) }, '📅 Add to My Phone Calendar'));
+    return box;
+  }
+
+  return { el, money, fmtDate, fmtTime, fmtStamp, whenText, sizeText, status, details, thread, photos, compressImage, calendar, calendarSync, calKind, todayIso, shortTime };
 })();

@@ -384,8 +384,22 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Jobs</h2>
-          <input type="search" id="job-search" class="search" placeholder="Search address, client, supplier…" aria-label="Search jobs">
+          <div class="view-switch" role="group" aria-label="View">
+            <button type="button" data-jobview="list" aria-pressed="true">☰ List</button>
+            <button type="button" data-jobview="calendar" aria-pressed="false">📅 Calendar</button>
+          </div>
         </div>
+        <div id="admin-calendar-view" hidden>
+          <div class="cal-filter">
+            <label for="cal-supplier">Show</label>
+            <select id="cal-supplier"><option value="">All suppliers</option></select>
+          </div>
+          <div id="admin-cal"></div>
+          <div class="cal-day" id="admin-cal-day"></div>
+          <div id="admin-cal-sync"></div>
+        </div>
+        <div id="admin-list-view">
+        <input type="search" id="job-search" class="search job-search" placeholder="Search address, client, supplier…" aria-label="Search jobs">
         <div class="tabs job-filter" role="tablist" aria-label="Filter jobs">
           <button role="tab" type="button" class="tab" aria-selected="true" data-jobfilter="open">Open</button>
           <button role="tab" type="button" class="tab" aria-selected="false" data-jobfilter="attention">Needs reply <span class="count" id="jf-attention"></span></button>
@@ -395,6 +409,7 @@
         </div>
         <div class="jobs-list" id="admin-jobs-list"></div>
         <p class="empty" id="admin-jobs-empty" hidden>No jobs here.</p>
+        </div>
       </div>
     </section>
 

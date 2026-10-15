@@ -372,6 +372,14 @@ app.get('/admin/agreements/:id', (req, res) => {
 });
 
 // Cleaner's one-job page (no login); the page checks the link with /api/cleaner/:token.
+// Private calendar subscriptions (supplier or owner jobs) for Google / Apple / Outlook calendars.
+app.get('/cal/:file', (req, res) => {
+  const ics = /\.ics$/.test(req.params.file) ? jobs.calendarFeed(req.params.file.slice(0, -4)) : null;
+  res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' });
+  if (!ics) return res.status(404).type('text/plain').send('Calendar not found.');
+  res.type('text/calendar; charset=utf-8').set('Content-Disposition', 'inline; filename="aplus-jobs.ics"').send(ics);
+});
+
 app.get('/c/:token', (_req, res) => {
   res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
   res.sendFile(path.join(PUBLIC_DIR, 'cleaner.html'));

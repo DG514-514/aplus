@@ -74,6 +74,11 @@ for (const column of ['cleaner_token', 'cleaner_token_at', 'cleaner_submitted_at
   if (!db.prepare('PRAGMA table_info(jobs)').all().some((c) => c.name === column)) db.exec(`ALTER TABLE jobs ADD COLUMN ${column} TEXT`);
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_cleaner_token ON jobs(cleaner_token)');
+// Private calendar feed (.ics) per supplier, so their jobs show up in Google / Apple / Outlook calendars.
+if (!db.prepare('PRAGMA table_info(cleaners)').all().some((c) => c.name === 'calendar_token')) {
+  db.exec('ALTER TABLE cleaners ADD COLUMN calendar_token TEXT');
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_cleaners_calendar_token ON cleaners(calendar_token)');
 
 const PHOTO_DIR = path.join(db.dataDir, 'uploads', 'jobs');
 const COOKIE = 'aplus_sup';
@@ -406,10 +411,117 @@ function describe(job) {
   return [`${job.address}${job.unit ? `, Unit ${job.unit}` : ''}`, [size, job.service].filter(Boolean).join(' · '), `When: ${when}`, `Pay: ${dollars(job.pay_cents)}`];
 }
 
+/* ---------- Calendar feeds (.ics) ---------- */
+
+const FEED_TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
+const newFeedToken = () => crypto.randomBytes(18).toString('base64url');
+const OWNER_FEED_KEY = 'owner_calendar_token';
+
+function feedLinks(req, token) {
+  const url = `${siteUrl() || `${req.protocol}://${req.get('host')}`}/cal/${token}.ics`;
+  const webcal = url.replace(/^https?:/, 'webcal:');
+  return { url, webcal, google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}` };
+}
+
+function supplierFeedToken(cleanerId, reset) {
+  const row = db.prepare('SELECT calendar_token FROM cleaners WHERE id = ?').get(cleanerId);
+  if (row?.calendar_token && !reset) return row.calendar_token;
+  const token = newFeedToken();
+  db.prepare('UPDATE cleaners SET calendar_token = ? WHERE id = ?').run(token, cleanerId);
+  return token;
+}
+
+function ownerFeedToken(reset) {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(OWNER_FEED_KEY);
+  if (row && !reset) return row.value;
+  const token = newFeedToken();
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(OWNER_FEED_KEY, token);
+  return token;
+}
+
+const icsText = (s) => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+// Lines longer than 75 bytes are folded (RFC 5545), without splitting a multi-byte character.
+function icsFold(line) {
+  const parts = [];
+  let cur = '';
+  for (const ch of line) {
+    if (Buffer.byteLength(cur + ch) > (parts.length ? 74 : 75)) { parts.push(cur); cur = ''; }
+    cur += ch;
+  }
+  parts.push(cur);
+  return parts.join('\r\n ');
+}
+const icsDay = (iso) => iso.replace(/-/g, '');
+const icsLocal = (iso, hhmm) => `${icsDay(iso)}T${hhmm.replace(':', '')}00`;
+function shiftDay(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+const FEED_LABEL = { requested: 'New request: ', accepted: '', completed: '✓ ', cancelled: 'Cancelled: ' };
+
+// Times are written without a time zone ("floating"), so they show at the local time on any device.
+function buildCalendar(name, jobs, { owner }) {
+  const stamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
+  const host = (siteUrl() || 'aplus-cleaning-solutions.com').replace(/^https?:\/\//, '');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//A+ Cleaning Solutions//Jobs//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    `X-WR-CALNAME:${icsText(name)}`, 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H'];
+  for (const j of jobs) {
+    const size = [j.bedrooms && (j.bedrooms === 'Studio' ? 'Studio' : `${j.bedrooms} bed`), j.bathrooms && `${j.bathrooms} bath`].filter(Boolean).join(' / ');
+    const street = j.address.split(',')[0];
+    let start;
+    let end;
+    if (j.time_start) {
+      start = `DTSTART:${icsLocal(j.service_date, j.time_start)}`;
+      if (j.time_end) end = `DTEND:${icsLocal(j.service_date, j.time_end)}`;
+      else {
+        const [h, m] = j.time_start.split(':').map(Number);
+        const later = Math.min(h + 3, 23);
+        end = `DTEND:${icsLocal(j.service_date, `${String(later).padStart(2, '0')}:${String(later === 23 ? 59 : m).padStart(2, '0')}`)}`;
+      }
+    } else {
+      start = `DTSTART;VALUE=DATE:${icsDay(j.service_date)}`;
+      end = `DTEND;VALUE=DATE:${icsDay(shiftDay(j.service_date, 1))}`;
+    }
+    const description = [
+      [size, j.service].filter(Boolean).join(' · '),
+      owner ? `Supplier: ${j.cleaner_company ? `${j.cleaner_name} (${j.cleaner_company})` : j.cleaner_name}` : null,
+      owner && j.client_name ? `Client: ${j.client_name}` : null,
+      j.instructions ? `Notes: ${j.instructions}` : null,
+      j.status === 'completed' && j.completed_by ? `Completed by ${j.completed_by}` : null,
+      `${owner ? 'Dashboard' : 'Supplier portal'}: ${siteUrl() || ''}${owner ? '/admin#jobs' : '/supplier'}`,
+    ].filter(Boolean).join('\n');
+    lines.push('BEGIN:VEVENT', `UID:job-${j.id}@${host}`, `DTSTAMP:${stamp}`, start, end,
+      `SUMMARY:${icsText(`${FEED_LABEL[j.status] || ''}${jobNumber(j.id)} · ${street}${owner ? ` · ${j.cleaner_company || j.cleaner_name}` : ''}`)}`,
+      `LOCATION:${icsText(`${j.address}${j.unit ? `, Unit ${j.unit}` : ''}`)}`,
+      `DESCRIPTION:${icsText(description)}`,
+      `STATUS:${{ requested: 'TENTATIVE', cancelled: 'CANCELLED' }[j.status] || 'CONFIRMED'}`,
+      'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  return `${lines.map(icsFold).join('\r\n')}\r\n`;
+}
+
+// The .ics for a feed token, or null if the token doesn't match a supplier or the owner.
+function calendarFeed(token) {
+  if (!FEED_TOKEN_RE.test(token || '')) return null;
+  const recent = (j) => j.service_date >= shiftDay(new Date().toISOString().slice(0, 10), -90);
+  const owner = db.prepare('SELECT value FROM settings WHERE key = ?').get(OWNER_FEED_KEY);
+  if (owner && owner.value === token) return buildCalendar('A+ Cleaning — All jobs', listJobs().filter(recent), { owner: true });
+  const cleaner = db.prepare('SELECT id, name, company FROM cleaners WHERE calendar_token = ? AND active = 1 AND password_hash IS NOT NULL').get(token);
+  if (!cleaner) return null;
+  return buildCalendar(`A+ Cleaning jobs — ${cleaner.company || cleaner.name}`, listJobs(cleaner.id).filter(recent), { owner: false });
+}
+
+supplierRouter.post('/calendar-link', (req, res) => {
+  res.json(feedLinks(req, supplierFeedToken(req.supplier.id, req.body?.reset === true)));
+});
+
 function registerAdminRoutes(router) {
   const jobsRouter = express.Router();
 
   jobsRouter.get('/', (_req, res) => res.json({ jobs: listJobs(), payables: payables() }));
+  jobsRouter.post('/calendar-link', (req, res) => res.json(feedLinks(req, ownerFeedToken(req.body?.reset === true))));
 
   jobsRouter.post('/', (req, res) => {
     const { job, error } = readJob(req.body || {});
@@ -622,4 +734,4 @@ cleanerRouter.post('/:token/submit', (req, res) => {
 
 const jobCountForCleaner = (cleanerId) => db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE cleaner_id = ?').get(cleanerId).n;
 
-module.exports = { supplierRouter, cleanerRouter, registerAdminRoutes, isSupplier, jobCountForCleaner, rawImage };
+module.exports = { supplierRouter, cleanerRouter, registerAdminRoutes, isSupplier, jobCountForCleaner, rawImage, calendarFeed };
