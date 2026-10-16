@@ -79,6 +79,8 @@ function createCheckoutSession({ invoice, items, client, successUrl, cancelUrl }
     cancel_url: cancelUrl,
     line_items: lineItems,
     metadata: { invoice_number: invoice.invoice_number },
+    // Charge only in our currency (USD): no "choose currency" / local-currency conversion on the checkout page.
+    adaptive_pricing: { enabled: false },
     payment_intent_data: {
       description: `A+ Cleaning Solutions invoice ${invoice.invoice_number}`,
       receipt_email: client.email,
