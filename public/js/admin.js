@@ -774,6 +774,8 @@ function renderInvoices() {
     const actions = el('div', { class: 'row-actions' });
     if (inv.status === 'open') {
       actions.append(
+        el('button', { type: 'button', class: 'link-btn', title: 'Copy the client’s pay link (no sign-in needed)', onclick: () => copyPayLink(inv) }, '🔗 Pay Link'),
+        el('button', { type: 'button', class: 'link-btn', onclick: () => resendInvoice(inv) }, 'Resend'),
         el('button', { type: 'button', class: 'link-btn', onclick: () => markInvoicePaid(inv) }, 'Mark Paid'),
         el('button', { type: 'button', class: 'link-btn danger', onclick: () => openCancelInvoice(inv) }, 'Cancel'));
     }
@@ -955,7 +957,10 @@ async function openInvoiceDetail(inv) {
   const closeThen = (fn) => () => { $('invoice-detail').close(); fn(); };
   if (inv.status === 'open') {
     actions.append(
-      el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: closeThen(() => markInvoicePaid(inv)) }, 'Mark Paid'),
+      el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => copyPayLink(inv) }, '🔗 Copy Pay Link'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => textPayLink(inv) }, '💬 Text Pay Link'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => resendInvoice(inv) }, '✉️ Resend Email'),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => markInvoicePaid(inv)) }, 'Mark Paid'),
       el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => openCancelInvoice(inv)) }, 'Cancel Invoice'));
   }
   if (inv.status === 'paid') actions.append(el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: closeThen(() => openCancelInvoice(inv)) }, 'Cancel / Refund'));
@@ -1013,6 +1018,45 @@ async function openInvoiceDetail(inv) {
       job.photos.length ? el('div', { class: 'id-photos' }, ...job.photos.slice(0, 8).map((p) => el('a', { href: `/api/admin/jobs/photos/${p.id}`, target: '_blank', rel: 'noopener' },
         el('img', { src: `/api/admin/jobs/photos/${p.id}`, alt: `${p.kind} photo`, loading: 'lazy' })))) : null);
   } catch { /* the job is a nice-to-have here */ }
+}
+
+/* ---------- Pay links ---------- */
+
+// Each invoice has a private link the client can open to view and pay by card, no sign-in needed.
+async function payLinkFor(inv) {
+  const { url } = await api(`/invoices/${inv.id}/pay-link`, 'POST');
+  return url;
+}
+
+async function copyPayLink(inv) {
+  try {
+    const url = await payLinkFor(inv);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast(`Pay link for ${inv.invoice_number} copied — paste it in a text or email to ${inv.client_name.split(' ')[0]}.`);
+    } catch {
+      prompt(`Pay link for ${inv.invoice_number}:`, url);
+    }
+  } catch (err) { toast(err.message); }
+}
+
+async function textPayLink(inv) {
+  try {
+    const url = await payLinkFor(inv);
+    const client = state.clients.find((c) => c.id === inv.client_id);
+    const body = `Hi ${inv.client_name.split(' ')[0]}, here is the link to view and pay your A+ Cleaning invoice ${inv.invoice_number} (${money.format(inv.amount_cents / 100)}): ${url}`;
+    const phone = (client?.phone || '').replace(/[^\d+]/g, '');
+    if (navigator.share && !phone) { await navigator.share({ title: `Invoice ${inv.invoice_number}`, text: body }).catch(() => {}); return; }
+    window.location.href = `sms:${phone}${/iPhone|iPad|Mac/.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(body)}`;
+  } catch (err) { toast(err.message); }
+}
+
+async function resendInvoice(inv) {
+  if (!confirm(`Email invoice ${inv.invoice_number} with its pay link to ${inv.client_email} again?`)) return;
+  try {
+    const { to } = await api(`/invoices/${inv.id}/resend`, 'POST');
+    toast(`Invoice ${inv.invoice_number} re-sent to ${to}.`);
+  } catch (err) { toast(err.message); }
 }
 
 async function markInvoicePaid(inv) {

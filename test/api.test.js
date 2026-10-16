@@ -1308,3 +1308,91 @@ test('pages link CSS/JS with a version tag so browsers never keep a stale copy',
   assert.equal(css.status, 200);
   assert.match(css.headers.get('content-type'), /text\/css/);
 });
+
+test('pay links: client can view and pay an invoice without signing in; owner can copy or resend it', async () => {
+  const realFetch = global.fetch;
+  const sessions = {};
+  const emails = [];
+  const stripeCalls = [];
+  process.env.STRIPE_SECRET_KEY = 'sk_test_pay';
+  process.env.RESEND_API_KEY = 'test-resend';
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.startsWith('https://api.resend.com')) { emails.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
+    if (!u.startsWith('https://api.stripe.com')) return realFetch(url, opts);
+    stripeCalls.push({ url: u, method: opts.method, body: opts.body ? new URLSearchParams(opts.body) : null });
+    if (opts.method === 'POST' && u.endsWith('/checkout/sessions')) {
+      const body = new URLSearchParams(opts.body);
+      const id = `cs_pay_${Object.keys(sessions).length + 1}`;
+      sessions[id] = { id, status: 'open', payment_status: 'unpaid', url: `https://checkout.stripe.com/c/pay/${id}`, success_url: body.get('success_url'),
+        amount_total: Number(body.get('line_items[0][price_data][unit_amount]')), metadata: { invoice_number: body.get('metadata[invoice_number]') } };
+      return new Response(JSON.stringify(sessions[id]), { status: 200 });
+    }
+    const id = decodeURIComponent(u.split('/checkout/sessions/')[1].split('?')[0]);
+    return new Response(JSON.stringify(sessions[id]), { status: sessions[id] ? 200 : 404 });
+  };
+  try {
+    const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };
+    const clientId = Number(addClient('payer2@example.com', 'payer2pass1', 'Paula Link'));
+    const created = await (await post('/api/admin/invoices', { clientId, items: [{ description: 'Studio Standard Clean', amount: '110' }], serviceDate: '2026-11-03', serviceTime: '10:00' }, admin)).json();
+    assert.match(created.payUrl, /\/pay\/[A-Za-z0-9_-]{20,}$/);
+    const token = created.payUrl.split('/pay/')[1];
+    await new Promise((r) => setTimeout(r, 20));
+    const invEmail = emails.find((m) => m.to[0] === 'payer2@example.com');
+    assert.ok(invEmail.html.includes(`/pay/${token}`), 'invoice email links to the pay page');
+
+    // Page and data, no login needed; no email/address leaked.
+    const page = await fetch(`${base}/pay/${token}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get('x-robots-tag'), 'noindex');
+    const { invoice, payments } = await (await fetch(`${base}/api/pay/${token}`)).json();
+    assert.equal(payments, true);
+    assert.equal(invoice.invoice_number, created.invoiceNumber);
+    assert.equal(invoice.amount_cents, 11000);
+    assert.equal(invoice.first_name, 'Paula');
+    assert.equal(invoice.service_time, '10:00');
+    assert.equal(invoice.items[0].description, 'Studio Standard Clean');
+    for (const hidden of ['client_id', 'id', 'pay_token', 'stripe_session_id', 'admin_notes']) assert.equal(hidden in invoice, false, hidden);
+    assert.ok(!JSON.stringify(invoice).includes('payer2@example.com'));
+    assert.equal((await fetch(`${base}/api/pay/not-a-real-token-1234567890`)).status, 404);
+
+    // Checkout returns to the pay page; confirming marks it paid.
+    const { url } = await (await post(`/api/pay/${token}/checkout`, {})).json();
+    assert.match(url, /^https:\/\/checkout\.stripe\.com\//);
+    const call = stripeCalls.find((c) => c.method === 'POST' && c.url.endsWith('/checkout/sessions'));
+    assert.match(call.body.get('success_url'), new RegExp(`/pay/${token}\\?paid=\\{CHECKOUT_SESSION_ID\\}$`));
+    assert.equal(call.body.get('customer_email'), 'payer2@example.com');
+    const sessionId = Object.keys(sessions)[0];
+    Object.assign(sessions[sessionId], { status: 'complete', payment_status: 'paid', payment_intent: 'pi_pay_1' });
+    assert.equal((await post(`/api/pay/${token}/confirm`, { sessionId: 'cs_other' })).status, 502);
+    const confirmed = await (await post(`/api/pay/${token}/confirm`, { sessionId })).json();
+    assert.equal(confirmed.paid, true);
+    assert.equal((await (await fetch(`${base}/api/pay/${token}`)).json()).invoice.status, 'paid');
+    assert.equal((await post(`/api/pay/${token}/checkout`, {})).status, 409);
+
+    // Owner: copy link (admin only) and resend (open invoices only).
+    const { invoices: all } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const paidInv = all.find((i) => i.invoice_number === created.invoiceNumber);
+    assert.equal((await post(`/api/admin/invoices/${paidInv.id}/pay-link`, {})).status, 401);
+    assert.equal((await (await post(`/api/admin/invoices/${paidInv.id}/pay-link`, {}, admin)).json()).url, created.payUrl);
+    assert.equal((await post(`/api/admin/invoices/${paidInv.id}/resend`, {}, admin)).status, 409);
+    const second = await (await post('/api/admin/invoices', { clientId, items: [{ description: 'Deep Clean', amount: '180' }], sendEmail: false }, admin)).json();
+    const { invoices: all2 } = await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json();
+    const openInv = all2.find((i) => i.invoice_number === second.invoiceNumber);
+    emails.length = 0;
+    const resent = await post(`/api/admin/invoices/${openInv.id}/resend`, {}, admin);
+    assert.equal(resent.status, 200);
+    assert.match(emails[0].subject, /^Payment link — Invoice /);
+    assert.ok(emails[0].text.includes(`/pay/${second.payUrl.split('/pay/')[1]}`));
+
+    // Cancelled invoices can't be paid through the link.
+    await post(`/api/admin/invoices/${openInv.id}/cancel`, { reason: 'Client moved', refund: 'none' }, admin);
+    const voidToken = second.payUrl.split('/pay/')[1];
+    assert.equal((await (await fetch(`${base}/api/pay/${voidToken}`)).json()).invoice.status, 'void');
+    assert.equal((await post(`/api/pay/${voidToken}/checkout`, {})).status, 409);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.RESEND_API_KEY;
+  }
+});

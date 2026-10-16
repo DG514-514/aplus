@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pay Invoice | A+ Cleaning Solutions</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#809678">
+  <link rel="icon" type="image/png" href="/img/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/portal.css">
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/config.js" defer></script>
+  <script src="/js/pay.js" defer></script>
+</head>
+<body class="portal-page">
+  <header class="portal-header">
+    <div class="container portal-nav">
+      <a href="/" class="brand"><img src="/img/logo.png" alt="A+ Cleaning Solutions" width="800" height="333"></a>
+      <div class="portal-user"></div>
+    </div>
+  </header>
+
+  <main class="container portal-main pay-main">
+    <div class="alert" id="pay-notice" role="status" aria-live="polite" hidden></div>
+    <p class="muted" id="pay-loading">Loading your invoice…</p>
+    <div id="pay-invoice"></div>
+  </main>
+
+  <footer class="portal-footer container">
+    Questions about this invoice? Email <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a> · <a href="/terms">Terms &amp; Conditions</a>
+  </footer>
+</body>
+</html>

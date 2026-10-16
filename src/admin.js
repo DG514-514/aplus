@@ -320,7 +320,7 @@ router.post('/invoices', async (req, res) => {
   let email = 'skipped';
   if (b.sendEmail !== false) {
     try {
-      await notify.sendInvoiceEmail({ client, invoice, items: invoice.items });
+      await notify.sendInvoiceEmail({ client, invoice, items: invoice.items, payUrl: invoices.payUrl(invoice, req) });
       email = 'sent';
     } catch (err) {
       email = err.message;
@@ -331,7 +331,28 @@ router.post('/invoices', async (req, res) => {
     body: `${invoice.invoice_number} · ${stripe.formatMoney(invoice.amount_cents)} — tap to view and pay`,
     url: '/portal', tag: `invoice-${invoice.invoice_number}`,
   }).catch((err) => console.error('Push failed:', err.message));
-  res.status(201).json({ invoiceNumber: invoice.invoice_number, email });
+  res.status(201).json({ invoiceNumber: invoice.invoice_number, email, payUrl: invoices.payUrl(invoice, req) });
+});
+
+// The invoice's private pay link, to copy or text to the client.
+router.post('/invoices/:id/pay-link', (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(req.params.id));
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+  res.json({ url: invoices.payUrl(invoice, req), status: invoice.status });
+});
+
+// Email the invoice (with its pay link) to the client again.
+router.post('/invoices/:id/resend', async (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(req.params.id));
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+  if (invoice.status !== 'open') return res.status(409).json({ error: invoice.status === 'paid' ? 'This invoice is already paid.' : 'This invoice was cancelled.' });
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(invoice.client_id);
+  try {
+    await notify.sendInvoiceEmail({ client, invoice, items: invoices.itemsFor(invoice.id), payUrl: invoices.payUrl(invoice, req), reminder: true });
+    res.json({ ok: true, to: client.email });
+  } catch (err) {
+    res.status(502).json({ error: `The email couldn’t be sent: ${err.message}` });
+  }
 });
 
 router.post('/invoices/:id/mark-paid', (req, res) => {
