@@ -36,7 +36,7 @@ function listAll() {
   return db.prepare(`
     SELECT i.id, i.invoice_number, i.client_id, c.name AS client_name, c.email AS client_email, i.status,
            i.amount_cents, i.due_date, i.service_date, i.service_time, i.notes, i.paid_method, i.paid_at, i.receipt_url, i.created_at, i.order_id,
-           i.admin_notes, i.cancelled_at, i.cancel_reason, i.refunded_at,
+           i.admin_notes, i.cancelled_at, i.cancel_reason, i.refunded_at, i.updated_at,
            (i.stripe_payment_intent IS NOT NULL) AS stripe_refundable
     FROM invoices i JOIN clients c ON c.id = i.client_id
     ORDER BY i.id DESC

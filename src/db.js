@@ -165,6 +165,7 @@ for (const [table, column] of [['invoices', 'admin_notes'], ['invoices', 'cancel
 if (!hasColumn('invoices', 'order_id')) db.exec('ALTER TABLE invoices ADD COLUMN order_id INTEGER');
 // Private pay link per invoice (/pay/<token>): the client can view and pay without signing in.
 if (!hasColumn('invoices', 'pay_token')) db.exec('ALTER TABLE invoices ADD COLUMN pay_token TEXT');
+if (!hasColumn('invoices', 'updated_at')) db.exec('ALTER TABLE invoices ADD COLUMN updated_at TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_pay_token ON invoices(pay_token)');
 if (!hasColumn('orders', 'service_time')) db.exec('ALTER TABLE orders ADD COLUMN service_time TEXT');
 if (!hasColumn('clients', 'status')) db.exec("ALTER TABLE clients ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");

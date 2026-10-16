@@ -203,6 +203,12 @@ router.patch('/clients/:id', (req, res) => {
   }
   db.prepare('UPDATE clients SET name = ?, email = ?, phone = ?, residence = ?, room = ? WHERE id = ?')
     .run(name, email, orNull(str(b.phone, 40)), orNull(str(b.residence, 160)), orNull(str(b.room, 40)), id);
+  // Unit size (bedrooms / bathrooms) when the form sends it.
+  if ('bedrooms' in b || 'bathrooms' in b) {
+    const pick = (v, list) => (list.includes(v) ? v : null);
+    db.prepare('UPDATE clients SET bedrooms = ?, bathrooms = ? WHERE id = ?')
+      .run(pick(str(b.bedrooms, 8), ['Studio', '1', '2', '3', '4', '5', '6+']), pick(str(b.bathrooms, 8), ['1', '1.5', '2', '2.5', '3', '3.5', '4+']), id);
+  }
   res.json({ ok: true });
 });
 
@@ -283,29 +289,42 @@ router.delete('/orders/:id', (req, res) => {
 
 /* ---------- Invoices ---------- */
 
+// Line items from the invoice form, validated. Returns { items } or { error }.
+function parseItems(raw) {
+  const items = (Array.isArray(raw) ? raw : [])
+    .map((item) => ({ description: str(item?.description, 200), amount_cents: parseAmount(item?.amount) }))
+    .filter((item) => item.description || item.amount_cents);
+  if (!items.length) return { error: 'Add at least one line item.' };
+  if (items.some((item) => !item.description)) return { error: 'Every line item needs a description.' };
+  if (items.some((item) => !item.amount_cents)) return { error: 'Every line item needs an amount above $0.' };
+  if (items.length > 20) return { error: 'Up to 20 line items per invoice.' };
+  if (items.reduce((sum, item) => sum + item.amount_cents, 0) < 50) return { error: 'The invoice total must be at least $0.50 (Stripe’s minimum).' };
+  return { items };
+}
+
+// Due date, service date and service time from the invoice form. Returns the values or { error }.
+function parseInvoiceDates(b) {
+  const dueDate = str(b.dueDate, 10);
+  if (dueDate && !DATE_RE.test(dueDate)) return { error: 'Pick a valid due date.' };
+  const serviceDate = str(b.serviceDate, 10);
+  if (serviceDate && !DATE_RE.test(serviceDate)) return { error: 'Pick a valid service date.' };
+  const serviceTime = str(b.serviceTime, 5);
+  if (serviceTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(serviceTime)) return { error: 'Pick a valid service time.' };
+  if (serviceTime && !serviceDate) return { error: 'Add a service date to go with the time.' };
+  return { dueDate, serviceDate, serviceTime };
+}
+
 router.post('/invoices', async (req, res) => {
   const b = req.body || {};
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(b.clientId));
   if (!client) return res.status(400).json({ error: 'Choose a client.' });
 
-  const items = (Array.isArray(b.items) ? b.items : [])
-    .map((item) => ({ description: str(item?.description, 200), amount_cents: parseAmount(item?.amount) }))
-    .filter((item) => item.description || item.amount_cents);
-  if (!items.length) return res.status(400).json({ error: 'Add at least one line item.' });
-  if (items.some((item) => !item.description)) return res.status(400).json({ error: 'Every line item needs a description.' });
-  if (items.some((item) => !item.amount_cents)) return res.status(400).json({ error: 'Every line item needs an amount above $0.' });
-  if (items.length > 20) return res.status(400).json({ error: 'Up to 20 line items per invoice.' });
-  if (items.reduce((sum, item) => sum + item.amount_cents, 0) < 50) {
-    return res.status(400).json({ error: 'The invoice total must be at least $0.50 (Stripe’s minimum).' });
-  }
-
-  const dueDate = str(b.dueDate, 10);
-  if (dueDate && !DATE_RE.test(dueDate)) return res.status(400).json({ error: 'Pick a valid due date.' });
-  const serviceDate = str(b.serviceDate, 10);
-  if (serviceDate && !DATE_RE.test(serviceDate)) return res.status(400).json({ error: 'Pick a valid service date.' });
-  const serviceTime = str(b.serviceTime, 5);
-  if (serviceTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(serviceTime)) return res.status(400).json({ error: 'Pick a valid service time.' });
-  if (serviceTime && !serviceDate) return res.status(400).json({ error: 'Add a service date to go with the time.' });
+  const parsed = parseItems(b.items);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const { items } = parsed;
+  const dates = parseInvoiceDates(b);
+  if (dates.error) return res.status(400).json({ error: dates.error });
+  const { dueDate, serviceDate, serviceTime } = dates;
   const inquiryId = Number(b.inquiryId) || null;
   // Invoicing an order links the two, so the order shows it's been invoiced (and whether it's paid).
   const orderId = Number(b.orderId) || null;
@@ -332,6 +351,52 @@ router.post('/invoices', async (req, res) => {
     url: '/portal', tag: `invoice-${invoice.invoice_number}`,
   }).catch((err) => console.error('Push failed:', err.message));
   res.status(201).json({ invoiceNumber: invoice.invoice_number, email, payUrl: invoices.payUrl(invoice, req) });
+});
+
+// Edit an invoice: service date/time, due date and note anytime; line items only while it's unpaid.
+router.patch('/invoices/:id', async (req, res) => {
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(req.params.id));
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+  if (invoice.status === 'void') return res.status(409).json({ error: 'This invoice was cancelled. Send a new invoice instead.' });
+  const b = req.body || {};
+  const dates = parseInvoiceDates(b);
+  if (dates.error) return res.status(400).json({ error: dates.error });
+
+  let items = null;
+  if (b.items !== undefined) {
+    if (invoice.status !== 'open') return res.status(409).json({ error: 'Items can’t be changed on a paid invoice. Cancel / refund it and send a new one instead.' });
+    const parsed = parseItems(b.items);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    items = parsed.items;
+  }
+
+  db.exec('BEGIN');
+  try {
+    db.prepare("UPDATE invoices SET due_date = ?, service_date = ?, service_time = ?, notes = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(dates.dueDate || null, dates.serviceDate || null, dates.serviceTime || null, str(b.notes, 1000) || null, invoice.id);
+    if (items) {
+      db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(invoice.id);
+      const insert = db.prepare('INSERT INTO invoice_items (invoice_id, description, amount_cents) VALUES (?, ?, ?)');
+      for (const item of items) insert.run(invoice.id, item.description, item.amount_cents);
+      // A checkout started for the old amount must not be reused.
+      db.prepare('UPDATE invoices SET amount_cents = ?, stripe_session_id = NULL WHERE id = ?').run(items.reduce((sum, i) => sum + i.amount_cents, 0), invoice.id);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice.id);
+  let email = 'skipped';
+  if (b.sendEmail === true && updated.status === 'open') {
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(updated.client_id);
+    try {
+      await notify.sendInvoiceEmail({ client, invoice: updated, items: invoices.itemsFor(updated.id), payUrl: invoices.payUrl(updated, req), kind: 'updated' });
+      email = 'sent';
+    } catch (err) { email = err.message; }
+  }
+  res.json({ ok: true, amount_cents: updated.amount_cents, email });
 });
 
 // The invoice's private pay link, to copy or text to the client.

@@ -161,7 +161,8 @@ function formatService(date, time) {
 const siteUrl = () => (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 
 // Tells a client they have a new invoice to pay in their portal.
-function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false }) {
+function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false, kind }) {
+  const updated = kind === 'updated';
   const loginUrl = `${siteUrl()}/login`;
   const payLink = payUrl || loginUrl;
   const first = client.name.split(' ')[0];
@@ -171,7 +172,9 @@ function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false }) 
   const text = [
     `Hi ${first},`,
     '',
-    reminder
+    updated
+      ? `Your invoice ${invoice.invoice_number} from A+ Cleaning Solutions has been updated. The new total is ${money(invoice.amount_cents)}.`
+      : reminder
       ? `Here is the payment link for your invoice ${invoice.invoice_number} from A+ Cleaning Solutions (${money(invoice.amount_cents)}).`
       : `You have a new invoice (${invoice.invoice_number}) from A+ Cleaning Solutions for ${money(invoice.amount_cents)}.`,
     '',
@@ -188,7 +191,7 @@ function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false }) 
   const html = `
     <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px">
       <p>Hi ${escapeHtml(first)},</p>
-      <p>${reminder ? 'Here is the payment link for your invoice' : 'You have a new invoice'} <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
+      <p>${updated ? 'Your invoice has been updated:' : reminder ? 'Here is the payment link for your invoice' : 'You have a new invoice'} <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
       ${service ? `<p style="background:#f3f6f1;padding:10px 14px;border-radius:8px">🗓️ <strong>Service:</strong> ${escapeHtml(service)}</p>` : ''}
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
         ${items.map((i) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e3e0d8">${escapeHtml(i.description)}</td>
@@ -205,7 +208,7 @@ function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false }) 
   return track(sendEmail({
     to: [client.email],
     replyTo: config().to[0],
-    subject: `${reminder ? 'Payment link — ' : ''}Invoice ${invoice.invoice_number} from A+ Cleaning Solutions: ${money(invoice.amount_cents)}`,
+    subject: `${updated ? 'Updated — ' : reminder ? 'Payment link — ' : ''}Invoice ${invoice.invoice_number} from A+ Cleaning Solutions: ${money(invoice.amount_cents)}`,
     text,
     html,
   }));

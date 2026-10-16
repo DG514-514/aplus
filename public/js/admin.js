@@ -367,19 +367,49 @@ function resetClientForm() {
   formError(form, '');
 }
 
+// Edit a client's details in a pop-up (works from the client list and from inside the client file).
+let editingClientId = null;
 function editClient(c) {
-  const form = $('client-form');
-  state.editingClient = c;
+  editingClientId = c.id;
+  const form = $('client-edit-form');
+  formError(form, '');
+  $('ce-title').textContent = `Edit ${c.name}`;
   form.name.value = c.name;
   form.email.value = c.email;
   form.phone.value = c.phone || '';
   form.residence.value = c.residence || '';
   form.room.value = c.room || '';
-  $('c-password-field').hidden = true;
-  $('client-form-title').textContent = `Edit ${c.name}`;
-  $('client-submit').textContent = 'Save Changes';
-  $('client-cancel').hidden = false;
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  form.bedrooms.value = c.bedrooms || '';
+  form.bathrooms.value = c.bathrooms || '';
+  $('ce-email-hint').textContent = '';
+  form.email.oninput = () => {
+    $('ce-email-hint').textContent = form.email.value.trim().toLowerCase() !== c.email.toLowerCase()
+      ? 'This is their sign-in — let them know to use the new email next time.' : '';
+  };
+  $('client-edit-dialog').showModal();
+  form.name.focus();
+}
+
+async function submitClientEdit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const data = Object.fromEntries(new FormData(form));
+  if (data.name.trim().length < 2) return formError(form, 'Enter the client’s full name.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) return formError(form, 'Enter a valid email.');
+  const btn = $('ce-submit');
+  btn.disabled = true;
+  try {
+    await api(`/clients/${editingClientId}`, 'PATCH', data);
+    $('client-edit-dialog').close();
+    toast(`${data.name.trim()} updated.`);
+    await refresh();
+    // Refresh the client file underneath if it's open.
+    if ($('client-file').open) openClientFile(editingClientId);
+  } catch (err) {
+    formError(form, err.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function newOrderFor(c) {
@@ -854,7 +884,7 @@ async function openClientFile(id) {
   const paid = invs.filter((i) => i.status === 'paid');
   const open = invs.filter((i) => i.status === 'open');
 
-  const place = [c.residence, c.room && `Unit/Rm ${c.room}`].filter(Boolean).join(', ') || '—';
+  const place = [c.residence, c.room && `Unit ${c.room}`].filter(Boolean).join(', ') || '—';
   const size = [c.bedrooms && (c.bedrooms === 'Studio' ? 'Studio' : `${c.bedrooms} bed`), c.bathrooms && `${c.bathrooms} bath`].filter(Boolean).join(' · ');
   const since = new Date(`${c.created_at.replace(' ', 'T')}Z`).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -871,7 +901,7 @@ async function openClientFile(id) {
     el('div', { class: 'cf-actions' },
       el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => { closeClientFile(); newOrderFor(c); } }, 'Add Order'),
       el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { closeClientFile(); openInvoiceFor(c); } }, 'Send Invoice'),
-      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => { closeClientFile(); showView('clients'); editClient(c); } }, 'Edit Details')),
+      el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => editClient(c) }, 'Edit Details')),
     el('div', { class: 'cf-stats' },
       stat('Orders', String(orders.length), `${orders.filter((o) => o.status === 'completed').length} completed`),
       stat('Upcoming', String(orders.filter((o) => o.status === 'scheduled' && o.service_date >= today).length), 'scheduled'),
@@ -944,17 +974,20 @@ async function openInvoiceDetail(inv) {
   const client = state.clients.find((c) => c.id === inv.client_id);
   const [cls, label] = invoiceStatus(inv);
   const fact = (term, ...value) => (value.some((v) => v != null && v !== '') ? el('div', {}, el('dt', {}, term), el('dd', {}, ...value)) : null);
-  const where = order?.location || [client?.residence, client?.room && `Unit/Rm ${client.room}`].filter(Boolean).join(', ');
+  const where = order?.location || [client?.residence, client?.room && `Unit ${client.room}`].filter(Boolean).join(', ');
   const size = client && [client.bedrooms && (client.bedrooms === 'Studio' ? 'Studio' : `${client.bedrooms} bed`), client.bathrooms && `${client.bathrooms} bath`].filter(Boolean).join(' · ');
 
   // Payment history, oldest first.
-  const timeline = [[inv.created_at, `Invoice sent to ${inv.client_email}`]];
+  const timeline = [[inv.created_at, 'Invoice created']];
   if (inv.paid_at) timeline.push([inv.paid_at, inv.paid_method === 'stripe' ? 'Paid by card (Stripe)' : `Marked paid (${inv.paid_method || 'manual'})`]);
+  if (inv.updated_at) timeline.push([inv.updated_at, 'Edited']);
   if (inv.cancelled_at) timeline.push([inv.cancelled_at, `Cancelled${inv.cancel_reason ? ` — ${inv.cancel_reason}` : ''}`]);
+  timeline.sort((a, b) => a[0].localeCompare(b[0]));
   if (inv.refunded_at) timeline.push([inv.refunded_at, 'Refunded']);
 
   const actions = el('div', { class: 'cf-actions' });
   const closeThen = (fn) => () => { $('invoice-detail').close(); fn(); };
+  if (inv.status !== 'void') actions.append(el('button', { type: 'button', class: 'btn btn-outline btn-sm', onclick: () => editInvoice(inv) }, '✏️ Edit Invoice'));
   if (inv.status === 'open') {
     actions.append(
       el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => copyPayLink(inv) }, '🔗 Copy Pay Link'),
@@ -1008,6 +1041,7 @@ async function openInvoiceDetail(inv) {
     const job = jobs.find((j) => j.client_id === inv.client_id && j.service_date === serviceDate && j.status !== 'cancelled');
     const slot = document.getElementById('id-job');
     if (!job || !slot) return;
+    // (replaceChildren would print 'null' for a missing piece, so empty strings are used instead.)
     slot.replaceChildren(
       el('h3', { class: 'cf-section' }, 'Supplier job'),
       el('dl', { class: 'id-facts' },
@@ -1016,7 +1050,7 @@ async function openInvoiceDetail(inv) {
         fact('Photos', job.photos.length ? `${job.photos.filter((p) => p.kind === 'before').length} before · ${job.photos.filter((p) => p.kind === 'after').length} after` : null),
         fact('Supplier pay', `${money.format(job.pay_cents / 100)} · ${job.supplier_paid_at ? 'paid' : job.status === 'completed' ? 'owed' : 'not yet due'}`)),
       job.photos.length ? el('div', { class: 'id-photos' }, ...job.photos.slice(0, 8).map((p) => el('a', { href: `/api/admin/jobs/photos/${p.id}`, target: '_blank', rel: 'noopener' },
-        el('img', { src: `/api/admin/jobs/photos/${p.id}`, alt: `${p.kind} photo`, loading: 'lazy' })))) : null);
+        el('img', { src: `/api/admin/jobs/photos/${p.id}`, alt: `${p.kind} photo`, loading: 'lazy' })))) : '');
   } catch { /* the job is a nice-to-have here */ }
 }
 
@@ -1057,6 +1091,90 @@ async function resendInvoice(inv) {
     const { to } = await api(`/invoices/${inv.id}/resend`, 'POST');
     toast(`Invoice ${inv.invoice_number} re-sent to ${to}.`);
   } catch (err) { toast(err.message); }
+}
+
+/* ---------- Editing an invoice ---------- */
+
+// Edit form in the invoice details: service date/time, due date, note, and (while unpaid) the line items.
+function editInvoice(inv) {
+  const body = $('invoice-detail-body');
+  const itemsEditable = inv.status === 'open';
+  const field = (id, label, input) => el('div', { class: 'field' }, el('label', { for: id }, label), input);
+  const date = el('input', { id: 'ie-date', type: 'date', value: inv.service_date || '' });
+  const time = el('input', { id: 'ie-time', type: 'time', step: '900', value: inv.service_time || '' });
+  const due = el('input', { id: 'ie-due', type: 'date', value: inv.due_date || '' });
+  const notes = el('textarea', { id: 'ie-notes', rows: '2', maxlength: '1000', placeholder: 'Shown on the invoice (optional)' });
+  notes.value = inv.notes || '';
+  const total = el('strong', { class: 'ie-total' });
+  const list = el('div', { class: 'ie-items' });
+
+  const readRows = () => [...list.querySelectorAll('.item-row')].map((row) => ({
+    description: row.querySelector('.item-desc').value.trim(),
+    amount: row.querySelector('.item-amount').value,
+  })).filter((it) => it.description || it.amount);
+  const updateTotal = () => { total.textContent = money.format(readRows().reduce((sum, it) => sum + (Number(it.amount) || 0), 0)); };
+  const addRow = (description = '', amount = '') => {
+    const desc = el('input', { class: 'item-desc', 'aria-label': 'Description', value: description, oninput: updateTotal });
+    const amt = el('input', { class: 'item-amount', type: 'number', min: '0', step: '0.01', 'aria-label': 'Amount', value: amount, oninput: updateTotal });
+    const picker = el('select', { class: 'item-service', 'aria-label': 'Service' },
+      el('option', { value: '' }, 'Choose a service…'),
+      ...SERVICES.map((s) => el('option', { value: s.id }, s.name)),
+      el('option', { value: 'custom' }, 'Custom item…'));
+    const preset = SERVICES.find((s) => s.name === description);
+    picker.value = description ? (preset ? preset.id : 'custom') : '';
+    picker.addEventListener('change', () => {
+      const s = SERVICES.find((x) => x.id === picker.value);
+      if (s) { desc.value = s.name; amt.value = s.price.toFixed(2); } else if (picker.value === 'custom') { desc.value = ''; amt.value = ''; desc.focus(); }
+      updateTotal();
+    });
+    const row = el('div', { class: 'item-row' }, picker, desc, amt,
+      el('button', { type: 'button', class: 'link-btn danger', 'aria-label': 'Remove line item', onclick: () => { if (list.children.length > 1) row.remove(); updateTotal(); } }, '✕'));
+    if (!itemsEditable) [picker, desc, amt].forEach((x) => { x.disabled = true; });
+    list.append(row);
+    updateTotal();
+  };
+  inv.items.forEach((it) => addRow(it.description, (it.amount_cents / 100).toFixed(2)));
+
+  const email = el('input', { type: 'checkbox', id: 'ie-email' });
+  const save = el('button', { type: 'submit', class: 'btn btn-primary' }, 'Save Changes');
+  const form = el('form', { class: 'form-grid admin-form ie-form', novalidate: '' },
+    el('div', { class: 'alert alert-error full', role: 'alert', hidden: '' }),
+    field('ie-date', 'Service date', date),
+    field('ie-time', 'Service time', time),
+    field('ie-due', 'Due date', due),
+    el('div', { class: 'field full' }, el('label', {}, 'Items'), list,
+      itemsEditable
+        ? el('div', { class: 'ie-items-foot' }, el('button', { type: 'button', class: 'link-btn', onclick: () => addRow() }, '＋ Add item'), el('span', {}, 'Total ', total))
+        : el('p', { class: 'field-hint' }, 'This invoice is paid, so its items and total can’t change. To charge a different amount, Cancel / Refund it and send a new invoice.')),
+    el('div', { class: 'field full' }, el('label', { for: 'ie-notes' }, 'Note to client'), notes),
+    itemsEditable ? el('label', { class: 'ie-email full' }, email, ' Email the updated invoice (with its pay link) to the client') : '',
+    el('div', { class: 'full modal-actions' },
+      el('button', { type: 'button', class: 'btn btn-outline', onclick: () => openInvoiceDetail(inv) }, 'Cancel'),
+      save));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (time.value && !date.value) return formError(form, 'Add a service date to go with the time.');
+    const payload = { serviceDate: date.value, serviceTime: time.value, dueDate: due.value, notes: notes.value, sendEmail: email.checked };
+    if (itemsEditable) payload.items = readRows();
+    save.disabled = true;
+    try {
+      const result = await api(`/invoices/${inv.id}`, 'PATCH', payload);
+      await refresh();
+      const fresh = state.invoices.find((i) => i.id === inv.id);
+      toast(`${inv.invoice_number} updated${result.email === 'sent' ? ' and emailed to the client' : result.email !== 'skipped' ? ` — but the email failed: ${result.email}` : ''}.`);
+      if (fresh) openInvoiceDetail(fresh);
+      if ($('client-file').open) openClientFile(inv.client_id);
+    } catch (err) {
+      formError(form, err.message);
+      save.disabled = false;
+    }
+  });
+
+  body.replaceChildren(
+    el('div', { class: 'cf-head' }, el('div', {}, el('h2', { id: 'id-title' }, `Edit invoice ${inv.invoice_number}`), el('p', { class: 'sub' }, inv.client_name))),
+    form);
+  date.focus();
 }
 
 async function markInvoicePaid(inv) {
@@ -1414,6 +1532,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   resetInvoiceForm();
   fillOrderServicePicker();
   $('cf-close').addEventListener('click', closeClientFile);
+  $('client-edit-form').addEventListener('submit', submitClientEdit);
+  $('ce-close').addEventListener('click', () => $('client-edit-dialog').close());
   $('id-close').addEventListener('click', () => $('invoice-detail').close());
   $('cancel-invoice-form').addEventListener('submit', submitCancelInvoice);
   $('ci-close').addEventListener('click', () => $('cancel-invoice-dialog').close());
