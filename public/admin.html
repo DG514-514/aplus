@@ -161,12 +161,12 @@
             <input id="c-phone" name="phone" type="tel">
           </div>
           <div class="field">
-            <label for="c-residence">Residence</label>
-            <input id="c-residence" name="residence" placeholder="Maple Hall">
+            <label for="c-residence">Address</label>
+            <input id="c-residence" name="residence" placeholder="Street address, city">
           </div>
           <div class="field">
-            <label for="c-room">Room</label>
-            <input id="c-room" name="room" placeholder="214">
+            <label for="c-room">Unit / Apt <span class="optional">(optional)</span></label>
+            <input id="c-room" name="room" placeholder="e.g. 12B">
           </div>
           <div class="full"><button class="btn btn-primary" type="submit" id="client-submit">Create Client Login</button></div>
         </form>
@@ -179,7 +179,7 @@
         </div>
         <div class="table-wrap">
           <table class="orders admin-table">
-            <thead><tr><th>Client</th><th>Residence</th><th>Phone</th><th class="num">Orders</th><th>Terms</th><th></th></tr></thead>
+            <thead><tr><th>Client</th><th>Address</th><th>Phone</th><th class="num">Orders</th><th>Terms</th><th></th></tr></thead>
             <tbody id="clients-body"></tbody>
           </table>
         </div>
@@ -486,6 +486,49 @@
       <div class="full modal-actions">
         <button type="button" class="btn btn-outline" id="nd-close">Close</button>
         <button type="submit" class="btn btn-primary" id="nd-submit">Save Notes</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="client-edit-dialog" class="modal" aria-labelledby="ce-title">
+    <form id="client-edit-form" class="form-grid admin-form" novalidate>
+      <div class="full modal-head">
+        <h2 id="ce-title">Edit client</h2>
+        <p class="muted">Changes show in the client’s portal and on future invoices.</p>
+      </div>
+      <div class="alert alert-error" role="alert" hidden></div>
+      <div class="field full">
+        <label for="ce-name">Full name</label>
+        <input id="ce-name" name="name" required maxlength="120" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ce-email">Email <span class="optional">(their sign-in)</span></label>
+        <input id="ce-email" name="email" type="email" required maxlength="254" autocomplete="off">
+        <span class="field-hint" id="ce-email-hint"></span>
+      </div>
+      <div class="field">
+        <label for="ce-phone">Phone</label>
+        <input id="ce-phone" name="phone" type="tel" maxlength="40" autocomplete="off">
+      </div>
+      <div class="field full">
+        <label for="ce-address">Address</label>
+        <input id="ce-address" name="residence" maxlength="160" placeholder="Street address, city" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ce-unit">Unit / Apt <span class="optional">(optional)</span></label>
+        <input id="ce-unit" name="room" maxlength="40" placeholder="e.g. 12B" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ce-bedrooms">Bedrooms</label>
+        <select id="ce-bedrooms" name="bedrooms"><option value="">—</option><option>Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6+</option></select>
+      </div>
+      <div class="field">
+        <label for="ce-bathrooms">Bathrooms</label>
+        <select id="ce-bathrooms" name="bathrooms"><option value="">—</option><option>1</option><option>1.5</option><option>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4+</option></select>
+      </div>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-outline" id="ce-close">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="ce-submit">Save Changes</button>
       </div>
     </form>
   </dialog>

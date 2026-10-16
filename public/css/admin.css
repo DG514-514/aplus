@@ -189,3 +189,11 @@ option.add-new { font-weight: 700; }
 .id-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin-top: 10px; }
 .id-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block; }
 #invoice-detail-body .cf-head { padding-right: 44px; }
+/* Edit invoice form */
+.ie-form { margin-top: 12px; }
+.ie-items { display: grid; gap: 8px; }
+.ie-items .item-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) 110px auto; gap: 8px; align-items: center; }
+@media (max-width: 640px) { .ie-items .item-row { grid-template-columns: 1fr 110px auto; } .ie-items .item-service { grid-column: 1 / -1; } }
+.ie-items-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.ie-total { font-family: var(--font-head); color: var(--forest); }
+.ie-email { display: flex; align-items: center; gap: 8px; font-weight: 600; }

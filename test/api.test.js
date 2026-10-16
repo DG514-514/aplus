@@ -1398,3 +1398,79 @@ test('pay links: client can view and pay an invoice without signing in; owner ca
     delete process.env.RESEND_API_KEY;
   }
 });
+
+test('owner can edit an invoice (dates, items while unpaid) and a client’s details', async () => {
+  const realFetch = global.fetch;
+  const emails = [];
+  process.env.RESEND_API_KEY = 'test-resend';
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith('https://api.resend.com')) { emails.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
+    return realFetch(url, opts);
+  };
+  try {
+    const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };
+    const patch = (url, body, headers = admin) => fetch(base + url, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+    const clientId = Number(addClient('editme@example.com', 'editmepass1', 'Eddie Edit'));
+    const { invoiceNumber } = await (await post('/api/admin/invoices', { clientId, items: [{ description: 'Studio Standard Clean', amount: '110' }], serviceDate: '2026-11-01', serviceTime: '09:00', sendEmail: false }, admin)).json();
+    const find = async () => (await (await fetch(`${base}/api/admin/overview`, { headers: admin })).json()).invoices.find((i) => i.invoice_number === invoiceNumber);
+    let inv = await find();
+    db.prepare("UPDATE invoices SET stripe_session_id = 'cs_old' WHERE id = ?").run(inv.id);
+
+    // Validation and auth.
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceDate: '2026-11-02' }, {})).status, 401);
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceDate: 'nope' })).status, 400);
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceTime: '10:00' })).status, 400);
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceDate: '2026-11-02', items: [] })).status, 400);
+
+    // Change date, time, items; email the update.
+    const res = await (await patch(`/api/admin/invoices/${inv.id}`, {
+      serviceDate: '2026-11-05', serviceTime: '14:30', dueDate: '2026-11-10', notes: 'Updated for 2 units',
+      items: [{ description: '2 Bedroom / 2 Bathroom Standard Clean', amount: '160' }, { description: 'Oven add-on', amount: '25' }], sendEmail: true,
+    })).json();
+    assert.equal(res.amount_cents, 18500);
+    assert.equal(res.email, 'sent');
+    inv = await find();
+    assert.equal(inv.service_date, '2026-11-05');
+    assert.equal(inv.service_time, '14:30');
+    assert.equal(inv.due_date, '2026-11-10');
+    assert.equal(inv.notes, 'Updated for 2 units');
+    assert.deepEqual(inv.items.map((i) => i.amount_cents), [16000, 2500]);
+    assert.ok(inv.updated_at);
+    assert.equal(db.prepare('SELECT stripe_session_id FROM invoices WHERE id = ?').get(inv.id).stripe_session_id, null);
+    assert.match(emails.at(-1).subject, /^Updated — Invoice /);
+    assert.match(emails.at(-1).text, /\$185\.00/);
+    // The client sees the change in their portal.
+    const { cookie } = await login('editme@example.com', 'editmepass1');
+    const mine = (await (await fetch(`${base}/api/invoices`, { headers: { cookie } })).json()).invoices.find((i) => i.invoice_number === invoiceNumber);
+    assert.equal(mine.amount_cents, 18500);
+    assert.equal(mine.service_time, '14:30');
+
+    // Paid: dates can change, items can't.
+    await post(`/api/admin/invoices/${inv.id}/mark-paid`, { method: 'cash' }, admin);
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceDate: '2026-11-06', items: [{ description: 'X', amount: '1' }] })).status, 409);
+    assert.equal((await patch(`/api/admin/invoices/${inv.id}`, { serviceDate: '2026-11-06', serviceTime: '15:00' })).status, 200);
+    inv = await find();
+    assert.equal(inv.service_date, '2026-11-06');
+    assert.equal(inv.amount_cents, 18500);
+
+    // Client details: name, email, phone, address, unit and unit size.
+    assert.equal((await patch(`/api/admin/clients/${clientId}`, { name: 'Edward Edit', email: 'bad' })).status, 400);
+    assert.equal((await patch(`/api/admin/clients/${clientId}`, { name: 'Edward Edit', email: 'alice@example.com' })).status, 409);
+    assert.equal((await patch(`/api/admin/clients/${clientId}`, {
+      name: 'Edward Edit', email: 'Edward@Example.com', phone: '305-555-0100', residence: '100 Main St, Miami', room: '4C', bedrooms: '2', bathrooms: '1.5',
+    })).status, 200);
+    const c = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
+    assert.equal(c.name, 'Edward Edit');
+    assert.equal(c.email, 'edward@example.com');
+    assert.equal(c.phone, '305-555-0100');
+    assert.equal(c.residence, '100 Main St, Miami');
+    assert.equal(c.room, '4C');
+    assert.equal(c.bedrooms, '2');
+    assert.equal(c.bathrooms, '1.5');
+    // They sign in with the new email.
+    assert.equal((await post('/api/login', { email: 'edward@example.com', password: 'editmepass1' })).status, 200);
+  } finally {
+    global.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+  }
+});
