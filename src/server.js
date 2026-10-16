@@ -249,18 +249,15 @@ app.get('/api/invoices', auth.requireClientApi, requireTerms, (req, res) => {
   res.json({ invoices: invoices.listForClient(req.client.id), payments: stripe.status().configured });
 });
 
-app.post('/api/invoices/:number/pay', auth.requireClientApi, requireTerms, async (req, res) => {
-  const invoice = invoices.findByNumber(req.params.number);
-  if (!invoice || invoice.client_id !== req.client.id || invoice.status === 'void') {
-    return res.status(404).json({ error: 'Invoice not found.' });
-  }
+// Starts (or reuses) a Stripe Checkout for an open invoice and answers with its URL.
+// returnPath is where Stripe sends the client back: the portal, or the invoice's pay link.
+async function startCheckout(req, res, invoice, client, returnPath) {
   if (invoice.status === 'paid') return res.status(409).json({ error: 'This invoice is already paid.' });
-
   try {
     // Reuse an unexpired checkout for this invoice so double-clicks can't create two payments.
     if (invoice.stripe_session_id) {
       const existing = await stripe.retrieveCheckoutSession(invoice.stripe_session_id).catch(() => null);
-      if (existing?.status === 'open' && Number(existing.amount_total) === invoice.amount_cents) {
+      if (existing?.status === 'open' && Number(existing.amount_total) === invoice.amount_cents && (!existing.success_url || existing.success_url.includes(returnPath))) {
         return res.json({ url: existing.url });
       }
       if (existing?.payment_status === 'paid') {
@@ -269,18 +266,75 @@ app.post('/api/invoices/:number/pay', auth.requireClientApi, requireTerms, async
       }
     }
     const base = `${req.protocol}://${req.get('host')}`;
+    const join = returnPath.includes('?') ? '&' : '?';
     const session = await stripe.createCheckoutSession({
       invoice,
       items: invoices.itemsFor(invoice.id),
-      client: req.client,
-      successUrl: `${base}/portal?paid={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${base}/portal`,
+      client,
+      successUrl: `${base}${returnPath}${join}paid={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}${returnPath}`,
     });
     db.prepare('UPDATE invoices SET stripe_session_id = ? WHERE id = ?').run(session.id, invoice.id);
     res.json({ url: session.url });
   } catch (err) {
     console.error('Stripe checkout failed:', err.message);
     res.status(502).json({ error: 'Online payment isn’t available right now. Please try again shortly or contact us.' });
+  }
+}
+
+app.post('/api/invoices/:number/pay', auth.requireClientApi, requireTerms, async (req, res) => {
+  const invoice = invoices.findByNumber(req.params.number);
+  if (!invoice || invoice.client_id !== req.client.id || invoice.status === 'void') {
+    return res.status(404).json({ error: 'Invoice not found.' });
+  }
+  return startCheckout(req, res, invoice, req.client, '/portal');
+});
+
+/* ---------- Pay links (/pay/<token>): view and pay one invoice without signing in ---------- */
+
+const payLinkInvoice = (req, res) => {
+  const invoice = invoices.findByPayToken(req.params.token);
+  if (!invoice) res.status(404).json({ error: 'This payment link isn’t valid. Please check the link or contact us.' });
+  return invoice;
+};
+
+app.get('/api/pay/:token', (req, res) => {
+  const invoice = payLinkInvoice(req, res);
+  if (!invoice) return;
+  const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(invoice.client_id);
+  // Only what the client needs to see the bill: no email, address or account details.
+  res.set('Cache-Control', 'no-store').json({
+    invoice: {
+      invoice_number: invoice.invoice_number, status: invoice.status, amount_cents: invoice.amount_cents,
+      due_date: invoice.due_date, service_date: invoice.service_date, service_time: invoice.service_time,
+      notes: invoice.notes, paid_at: invoice.paid_at, receipt_url: invoice.receipt_url, refunded: Boolean(invoice.refunded_at),
+      created_at: invoice.created_at, first_name: (client?.name || '').split(' ')[0], items: invoices.itemsFor(invoice.id),
+    },
+    payments: stripe.status().configured,
+  });
+});
+
+app.post('/api/pay/:token/checkout', async (req, res) => {
+  const invoice = payLinkInvoice(req, res);
+  if (!invoice) return;
+  if (invoice.status === 'void') return res.status(409).json({ error: 'This invoice was cancelled, so there’s nothing to pay.' });
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(invoice.client_id);
+  return startCheckout(req, res, invoice, client, `/pay/${invoice.pay_token}`);
+});
+
+app.post('/api/pay/:token/confirm', async (req, res) => {
+  const invoice = payLinkInvoice(req, res);
+  if (!invoice) return;
+  const sessionId = str(req.body?.sessionId, 200);
+  if (!sessionId) return res.status(400).json({ error: 'Missing payment reference.' });
+  try {
+    const session = await stripe.retrieveCheckoutSession(sessionId);
+    if ((session.metadata?.invoice_number || session.client_reference_id) !== invoice.invoice_number) return res.status(404).json({ error: 'Invoice not found.' });
+    const { invoice: updated, paid } = invoices.applyCheckoutSession(session);
+    res.json({ paid, status: updated.status });
+  } catch (err) {
+    console.error('Stripe confirm failed:', err.message);
+    res.status(502).json({ error: 'We couldn’t confirm the payment yet. It will update shortly.' });
   }
 });
 
@@ -402,6 +456,11 @@ app.get('/cal/:file', (req, res) => {
   res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' });
   if (!ics) return res.status(404).type('text/plain').send('Calendar not found.');
   res.type('text/calendar; charset=utf-8').set('Content-Disposition', 'inline; filename="aplus-jobs.ics"').send(ics);
+});
+
+app.get('/pay/:token', (_req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
+  sendPage(res, 'pay.html');
 });
 
 app.get('/c/:token', (_req, res) => {

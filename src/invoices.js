@@ -2,6 +2,7 @@
 
 // Invoice records shared by the owner dashboard, the client portal and Stripe callbacks.
 
+const crypto = require('node:crypto');
 const db = require('./db');
 const notify = require('./notify');
 const push = require('./push');
@@ -42,15 +43,38 @@ function listAll() {
   `).all().map(withItems);
 }
 
+const newPayToken = () => crypto.randomBytes(18).toString('base64url');
+const PAY_TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
+
+// The invoice's private pay token (older invoices get one the first time it's needed).
+function payTokenFor(invoice) {
+  if (invoice.pay_token) return invoice.pay_token;
+  const row = db.prepare('SELECT pay_token FROM invoices WHERE id = ?').get(invoice.id);
+  if (row?.pay_token) return row.pay_token;
+  const token = newPayToken();
+  db.prepare('UPDATE invoices SET pay_token = ? WHERE id = ?').run(token, invoice.id);
+  return token;
+}
+
+const findByPayToken = (token) => (PAY_TOKEN_RE.test(token || '')
+  ? db.prepare('SELECT * FROM invoices WHERE pay_token = ?').get(token) || null
+  : null);
+
+// Full pay link; uses SITE_URL when set, otherwise the address the request came in on.
+function payUrl(invoice, req) {
+  const base = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || (req ? `${req.protocol}://${req.get('host')}` : '')).replace(/\/$/, '');
+  return `${base}/pay/${payTokenFor(invoice)}`;
+}
+
 function create({ clientId, items, dueDate, serviceDate, serviceTime, notes, inquiryId, orderId }) {
   const total = items.reduce((sum, item) => sum + item.amount_cents, 0);
   const invoiceNumber = db.nextInvoiceNumber();
   db.exec('BEGIN');
   try {
     const { lastInsertRowid } = db.prepare(`
-      INSERT INTO invoices (invoice_number, client_id, amount_cents, due_date, service_date, service_time, notes, inquiry_id, order_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(invoiceNumber, clientId, total, dueDate || null, serviceDate || null, serviceTime || null, notes || null, inquiryId || null, orderId || null);
+      INSERT INTO invoices (invoice_number, client_id, amount_cents, due_date, service_date, service_time, notes, inquiry_id, order_id, pay_token)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(invoiceNumber, clientId, total, dueDate || null, serviceDate || null, serviceTime || null, notes || null, inquiryId || null, orderId || null, newPayToken());
     const insertItem = db.prepare('INSERT INTO invoice_items (invoice_id, description, amount_cents) VALUES (?, ?, ?)');
     for (const item of items) insertItem.run(lastInsertRowid, item.description, item.amount_cents);
     if (inquiryId) db.prepare('UPDATE inquiries SET invoice_number = ? WHERE id = ?').run(invoiceNumber, inquiryId);
@@ -102,4 +126,4 @@ function applyCheckoutSession(session) {
   return { invoice: findByNumber(invoiceNumber), paid: true };
 }
 
-module.exports = { findByNumber, listForClient, listAll, create, markPaid, applyCheckoutSession, itemsFor };
+module.exports = { findByNumber, listForClient, listAll, create, markPaid, applyCheckoutSession, itemsFor, payTokenFor, findByPayToken, payUrl };

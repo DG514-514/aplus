@@ -362,6 +362,21 @@ window.I18N = (() => {
     'Courtesy translation. The English version of these Terms & Conditions is the one that applies and prevails if there is any difference.': 'Traducción de cortesía. La versión en inglés de estos Términos y Condiciones es la que aplica y prevalece en caso de cualquier diferencia.',
     '{company} · Terms & Conditions of Service · Version {version}': '{company} · Términos y Condiciones del Servicio · Versión {version}',
 
+    /* ---------- Pay link page ---------- */
+    'Pay Invoice | A+ Cleaning Solutions': 'Pagar factura | A+ Cleaning Solutions',
+    'Loading your invoice…': 'Cargando tu factura…',
+    'Hi {name},': 'Hola, {name}:',
+    'Your invoice': 'Tu factura',
+    'Here’s your invoice from A+ Cleaning Solutions. You can pay securely by card below.': 'Esta es tu factura de A+ Cleaning Solutions. Puedes pagar de forma segura con tarjeta aquí abajo.',
+    'This invoice is paid — thank you!': 'Esta factura está pagada. ¡Gracias!',
+    'This invoice was cancelled, so there’s nothing to pay.': 'Esta factura fue cancelada, así que no hay nada que pagar.',
+    'Have an account?': '¿Tienes una cuenta?',
+    'to see all your visits and invoices.': 'para ver todas tus visitas y facturas.',
+    'Payment link not found': 'Enlace de pago no encontrado',
+    'This payment link isn’t valid. Please check the link or contact us.': 'Este enlace de pago no es válido. Revisa el enlace o contáctanos.',
+    'Thank you! Your payment went through. A receipt has been emailed to you.': '¡Gracias! Tu pago se realizó. Te enviamos el recibo por correo.',
+    'Questions about this invoice? Email': '¿Preguntas sobre esta factura? Escribe a',
+
     /* ---------- Cleaner photo page ---------- */
     'Job Photos | A+ Cleaning Solutions': 'Fotos del trabajo | A+ Cleaning Solutions',
     'Job photos': 'Fotos del trabajo',

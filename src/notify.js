@@ -161,8 +161,9 @@ function formatService(date, time) {
 const siteUrl = () => (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
 
 // Tells a client they have a new invoice to pay in their portal.
-function sendInvoiceEmail({ client, invoice, items }) {
+function sendInvoiceEmail({ client, invoice, items, payUrl, reminder = false }) {
   const loginUrl = `${siteUrl()}/login`;
+  const payLink = payUrl || loginUrl;
   const first = client.name.split(' ')[0];
   const lines = items.map((i) => `${i.description}: ${money(i.amount_cents)}`);
   const due = invoice.due_date ? `Due ${invoice.due_date}. ` : '';
@@ -170,13 +171,16 @@ function sendInvoiceEmail({ client, invoice, items }) {
   const text = [
     `Hi ${first},`,
     '',
-    `You have a new invoice (${invoice.invoice_number}) from A+ Cleaning Solutions for ${money(invoice.amount_cents)}.`,
+    reminder
+      ? `Here is the payment link for your invoice ${invoice.invoice_number} from A+ Cleaning Solutions (${money(invoice.amount_cents)}).`
+      : `You have a new invoice (${invoice.invoice_number}) from A+ Cleaning Solutions for ${money(invoice.amount_cents)}.`,
     '',
     service ? `Service: ${service}` : null,
     ...lines,
     invoice.notes ? `\n${invoice.notes}` : null,
     '',
-    `${due}Sign in to view and pay securely online: ${loginUrl}`,
+    `${due}View and pay securely by card (no sign-in needed): ${payLink}`,
+    payUrl ? `Or sign in to your account: ${loginUrl}` : null,
     '',
     'Thank you!',
     'A+ Cleaning Solutions',
@@ -184,7 +188,7 @@ function sendInvoiceEmail({ client, invoice, items }) {
   const html = `
     <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px">
       <p>Hi ${escapeHtml(first)},</p>
-      <p>You have a new invoice <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
+      <p>${reminder ? 'Here is the payment link for your invoice' : 'You have a new invoice'} <strong>${escapeHtml(invoice.invoice_number)}</strong> from A+ Cleaning Solutions.</p>
       ${service ? `<p style="background:#f3f6f1;padding:10px 14px;border-radius:8px">🗓️ <strong>Service:</strong> ${escapeHtml(service)}</p>` : ''}
       <table style="border-collapse:collapse;width:100%;margin:16px 0">
         ${items.map((i) => `<tr><td style="padding:8px 0;border-bottom:1px solid #e3e0d8">${escapeHtml(i.description)}</td>
@@ -194,13 +198,14 @@ function sendInvoiceEmail({ client, invoice, items }) {
       </table>
       ${invoice.notes ? `<p style="white-space:pre-wrap;color:#66705f">${escapeHtml(invoice.notes)}</p>` : ''}
       ${invoice.due_date ? `<p>Due <strong>${escapeHtml(invoice.due_date)}</strong>.</p>` : ''}
-      <p style="margin:24px 0"><a href="${escapeHtml(loginUrl)}" style="background:#809678;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">View &amp; Pay Invoice</a></p>
+      <p style="margin:24px 0"><a href="${escapeHtml(payLink)}" style="background:#809678;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">View &amp; Pay Invoice</a></p>
+      ${payUrl ? `<p style="color:#66705f;font-size:13px">No sign-in needed. Prefer your account? <a href="${escapeHtml(loginUrl)}" style="color:#5a6f54">Sign in here</a>.</p>` : ''}
       <p style="color:#66705f">Thank you!<br>A+ Cleaning Solutions</p>
     </div>`;
   return track(sendEmail({
     to: [client.email],
     replyTo: config().to[0],
-    subject: `Invoice ${invoice.invoice_number} from A+ Cleaning Solutions: ${money(invoice.amount_cents)}`,
+    subject: `${reminder ? 'Payment link — ' : ''}Invoice ${invoice.invoice_number} from A+ Cleaning Solutions: ${money(invoice.amount_cents)}`,
     text,
     html,
   }));
