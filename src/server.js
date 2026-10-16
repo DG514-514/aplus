@@ -257,7 +257,8 @@ async function startCheckout(req, res, invoice, client, returnPath) {
     // Reuse an unexpired checkout for this invoice so double-clicks can't create two payments.
     if (invoice.stripe_session_id) {
       const existing = await stripe.retrieveCheckoutSession(invoice.stripe_session_id).catch(() => null);
-      if (existing?.status === 'open' && Number(existing.amount_total) === invoice.amount_cents && (!existing.success_url || existing.success_url.includes(returnPath))) {
+      if (existing?.status === 'open' && Number(existing.amount_total) === invoice.amount_cents && (!existing.success_url || existing.success_url.includes(returnPath))
+        && existing.adaptive_pricing?.enabled !== true) { // older checkouts offered other currencies
         return res.json({ url: existing.url });
       }
       if (existing?.payment_status === 'paid') {

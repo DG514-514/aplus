@@ -331,6 +331,8 @@ test('invoices: owner sends, client pays through Stripe, others cannot see or pa
     assert.equal(createCall.body.get('line_items[0][price_data][currency]'), 'usd');
     assert.equal(createCall.body.get('customer_email'), 'alice@example.com');
     assert.match(createCall.body.get('success_url'), /\/portal\?paid=\{CHECKOUT_SESSION_ID\}$/);
+    assert.equal(createCall.body.get('adaptive_pricing[enabled]'), 'false'); // USD only, no local-currency option
+    assert.equal(createCall.body.get('line_items[0][price_data][currency]'), 'usd');
 
     // Clicking Pay again reuses the same open checkout instead of creating another.
     const again = await (await post(`/api/invoices/${invoiceNumber}/pay`, {}, { cookie: alice })).json();
