@@ -21,7 +21,7 @@ function vapidKeys() {
       db.prepare("INSERT INTO settings (key, value) VALUES ('vapid', ?)").run(JSON.stringify(keys));
     }
   }
-  const contact = process.env.NOTIFY_EMAIL?.split(',')[0]?.trim() || 'info@aplus-cleaning-solutions.com';
+  const contact = process.env.NOTIFY_EMAIL?.split(',')[0]?.trim() || 'info@apluscleaningsolution.com';
   webpush.setVapidDetails(`mailto:${contact}`, keys.publicKey, keys.privateKey);
   return keys;
 }

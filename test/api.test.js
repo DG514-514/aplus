@@ -236,7 +236,7 @@ test('owner can check email setup and gets a plain-English reason when Resend re
 
   const status = await (await fetch(`${base}/api/admin/email-status`, { headers: { cookie } })).json();
   assert.equal(status.keySet, false);
-  assert.deepEqual(status.to, ['info@aplus-cleaning-solutions.com']);
+  assert.deepEqual(status.to, ['info@apluscleaningsolution.com']);
   assert.equal(status.last.ok, false);
 
   const realFetch = global.fetch;
@@ -1163,7 +1163,7 @@ test('cleaner link: one job only, no login, supplier approves the submission', a
   }
 });
 
-test('payment and job-completed alerts always reach info@aplus-cleaning-solutions.com', async () => {
+test('payment and job-completed alerts always reach info@apluscleaningsolution.com', async () => {
   const sent = [];
   const realFetch = global.fetch;
   process.env.RESEND_API_KEY = 'test-resend';
@@ -1172,7 +1172,7 @@ test('payment and job-completed alerts always reach info@aplus-cleaning-solution
     if (String(url).startsWith('https://api.resend.com')) { sent.push(JSON.parse(opts.body)); return new Response('{"id":"x"}', { status: 200 }); }
     return realFetch(url, opts);
   };
-  const INFO = 'info@aplus-cleaning-solutions.com';
+  const INFO = 'info@apluscleaningsolution.com';
   const soon = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
   try {
     const admin = { cookie: (await post('/api/admin/login', { email: 'owner@example.com', password: 'owner-secret-1' })).headers.get('set-cookie').split(';')[0] };

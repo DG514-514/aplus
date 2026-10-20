@@ -55,7 +55,7 @@ function publicPage() {
     <h1>${esc(t.title)}</h1>
     <p class="muted">Version ${esc(t.version)} · Clients agree to these terms when they first sign in to their account.</p>
     <article class="terms-body">${sectionsHtml(t.sections)}</article>
-    <p class="muted">Questions? Email <a href="mailto:info@aplus-cleaning-solutions.com">info@aplus-cleaning-solutions.com</a>.</p>`);
+    <p class="muted">Questions? Email <a href="mailto:info@apluscleaningsolution.com">info@apluscleaningsolution.com</a>.</p>`);
 }
 
 function recordPage(record) {

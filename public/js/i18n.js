@@ -203,7 +203,7 @@ window.I18N = (() => {
     'Get in touch': 'Contáctanos',
     'Book a clean': 'Reserva una limpieza',
     'A+ Cleaning Solutions. All rights reserved.': 'A+ Cleaning Solutions. Todos los derechos reservados.',
-    '{message} You can also email info@aplus-cleaning-solutions.com.': '{message} También puedes escribirnos a info@aplus-cleaning-solutions.com.',
+    '{message} You can also email info@apluscleaningsolution.com.': '{message} También puedes escribirnos a info@apluscleaningsolution.com.',
 
     /* ---------- 404 ---------- */
     'Page Not Found | A+ Cleaning Solutions': 'Página no encontrada | A+ Cleaning Solutions',
@@ -326,7 +326,7 @@ window.I18N = (() => {
     'Opening secure checkout…': 'Abriendo pago seguro…',
     '🔒 Secure checkout by Stripe': '🔒 Pago seguro con Stripe',
     'View Receipt': 'Ver recibo',
-    'Online payment coming soon — contact us at info@aplus-cleaning-solutions.com to pay.': 'El pago en línea estará disponible pronto. Contáctanos en info@aplus-cleaning-solutions.com para pagar.',
+    'Online payment coming soon — contact us at info@apluscleaningsolution.com to pay.': 'El pago en línea estará disponible pronto. Contáctanos en info@apluscleaningsolution.com para pagar.',
     'You have {n} unpaid invoice · {amount} due': 'Tienes {n} factura pendiente · {amount} por pagar',
     'You have {n} unpaid invoices · {amount} due': 'Tienes {n} facturas pendientes · {amount} por pagar',
     'Pay securely online by card in under a minute.': 'Paga de forma segura con tarjeta en menos de un minuto.',
