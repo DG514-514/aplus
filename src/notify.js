@@ -3,7 +3,7 @@
 // Emails the business when someone submits the website quote form.
 // Uses Resend (https://resend.com). Configure with:
 //   RESEND_API_KEY  — API key from Resend (required to send)
-//   NOTIFY_EMAIL    — where alerts go, e.g. info@aplus-cleaning-solutions.com
+//   NOTIFY_EMAIL    — where alerts go, e.g. info@apluscleaningsolution.com
 //   SITE_URL        — public address used for links, e.g. https://aplus-cleaning-solutions.com
 //   MAIL_FROM       — optional sender once your domain is verified in Resend,
 //                     e.g. "A+ Cleaning Website <website@aplus-cleaning-solutions.com>"
@@ -63,7 +63,7 @@ function buildInquiryEmail(inquiry, siteUrl) {
   };
 }
 
-const DEFAULT_NOTIFY_EMAIL = 'info@aplus-cleaning-solutions.com';
+const DEFAULT_NOTIFY_EMAIL = 'info@apluscleaningsolution.com';
 
 // Payments and completed jobs always reach the business inbox, even if NOTIFY_EMAIL lists other addresses.
 function ownerInbox() {

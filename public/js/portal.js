@@ -256,7 +256,7 @@ function renderInvoices(invoices, paymentsEnabled) {
       btn.addEventListener('click', () => payInvoice(inv, btn));
       actions.append(btn, el('span', { class: 'secure' }, '🔒 Secure checkout by Stripe'));
     } else if (inv.status === 'open') {
-      actions.append(el('span', { class: 'secure' }, 'Online payment coming soon — contact us at info@aplus-cleaning-solutions.com to pay.'));
+      actions.append(el('span', { class: 'secure' }, 'Online payment coming soon — contact us at info@apluscleaningsolution.com to pay.'));
     }
     if (inv.receipt_url) {
       actions.append(el('a', { class: 'btn btn-outline btn-sm', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, 'View Receipt'));

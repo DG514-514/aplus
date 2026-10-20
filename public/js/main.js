@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
         show('success', 'Thanks! Your request is in — we’ll be in touch shortly with a quote.');
       } catch (err) {
         const tr = (s, v) => (window.I18N ? window.I18N.t(s, v) : s.replace('{message}', v.message));
-        show('error', tr('{message} You can also email info@aplus-cleaning-solutions.com.', { message: window.I18N ? window.I18N.t(err.message) : err.message }));
+        show('error', tr('{message} You can also email info@apluscleaningsolution.com.', { message: window.I18N ? window.I18N.t(err.message) : err.message }));
       } finally {
         submit.disabled = false;
       }

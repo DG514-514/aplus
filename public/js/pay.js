@@ -75,7 +75,7 @@
       });
       actions.append(btn, el('span', { class: 'secure' }, T('🔒 Secure checkout by Stripe')));
     } else if (inv.status === 'open') {
-      actions.append(el('span', { class: 'secure' }, T('Online payment coming soon — contact us at info@aplus-cleaning-solutions.com to pay.')));
+      actions.append(el('span', { class: 'secure' }, T('Online payment coming soon — contact us at info@apluscleaningsolution.com to pay.')));
     }
     if (inv.receipt_url) actions.append(el('a', { class: 'btn btn-outline btn-sm', href: inv.receipt_url, target: '_blank', rel: 'noopener' }, T('View Receipt')));
 
