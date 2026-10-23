@@ -271,15 +271,37 @@ function sendSignupAlert(client) {
     ['Residence', [client.residence, client.room && `Unit/Room ${client.room}`].filter(Boolean).join(', ')],
     ['Bedrooms', client.bedrooms], ['Bathrooms', client.bathrooms], ['Notes', client.note],
   ].filter(([, v]) => v);
-  const text = ['New account request on the website — approve or decline it in your dashboard.', '',
-    ...rows.map(([k, v]) => `${k}: ${v}`), '', site ? `Review: ${site}/admin#clients` : ''].join('\n');
+  const text = ['A new client created an account on the website and signed the Terms & Conditions. They can sign in and book right away.', '',
+    ...rows.map(([k, v]) => `${k}: ${v}`), '', site ? `View client: ${site}/admin#clients` : ''].join('\n');
   const html = `
     <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
-      <p><strong>New account request</strong> — approve or decline it in your dashboard.</p>
+      <p><strong>New client sign-up</strong> — they created an account and signed the Terms &amp; Conditions. No action needed.</p>
       <table style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#66705f">${escapeHtml(k)}</td><td style="padding:4px 0">${escapeHtml(v)}</td></tr>`).join('')}</table>
-      ${site ? `<p><a href="${escapeHtml(site)}/admin#clients" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Review in dashboard</a></p>` : ''}
+      ${site ? `<p><a href="${escapeHtml(site)}/admin#clients" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">View in dashboard</a></p>` : ''}
     </div>`;
-  return track(sendEmail({ replyTo: client.email, subject: `New account request: ${client.name}`, text, html }));
+  return track(sendEmail({ replyTo: client.email, subject: `New client sign-up: ${client.name}`, text, html }));
+}
+
+// Welcome email to a client who just created their account on the website.
+function sendWelcomeEmail(client) {
+  const site = (process.env.SITE_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  const first = client.name.split(' ')[0];
+  const login = site ? `${site}/login` : 'our website';
+  const text = [`Hi ${first},`, '', 'Welcome to A+ Cleaning Solutions — your account is ready.', '',
+    `Sign in any time with the email and password you chose: ${login}`, '',
+    'From your account you can see upcoming visits, your order history and pay invoices online.',
+    site ? `The Terms & Conditions you signed: ${site}/terms` : '', '',
+    'Reply to this email if you have any questions.', '', 'A+ Cleaning Solutions'].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#2c3529;max-width:560px;line-height:1.5">
+      <p>Hi ${escapeHtml(first)},</p>
+      <p>Welcome to A+ Cleaning Solutions — <strong>your account is ready</strong>.</p>
+      <p>Sign in any time with the email and password you chose to see upcoming visits, your order history and pay invoices online.</p>
+      ${site ? `<p><a href="${escapeHtml(login)}" style="display:inline-block;background:#809678;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Sign in</a></p>` : ''}
+      ${site ? `<p style="color:#66705f;font-size:13px">The Terms &amp; Conditions you signed: <a href="${escapeHtml(site)}/terms" style="color:#5a6f54">${escapeHtml(site)}/terms</a></p>` : ''}
+      <p style="color:#66705f">Reply to this email if you have any questions.<br>A+ Cleaning Solutions</p>
+    </div>`;
+  return track(sendEmail({ to: [client.email], replyTo: config().to[0], subject: 'Welcome to A+ Cleaning Solutions — your account is ready', text, html }));
 }
 
 // Client email once the owner approves their account.
@@ -337,5 +359,5 @@ function emailStatus() {
 
 module.exports = {
   sendInquiryAlert, sendTestEmail, sendInvoiceEmail, sendPaymentAlert, sendDeclineEmail, emailStatus, buildInquiryEmail, formatService,
-  sendSignupAlert, sendAccountApprovedEmail, sendAccountDeclinedEmail, sendNotice, ownerInbox,
+  sendSignupAlert, sendWelcomeEmail, sendAccountApprovedEmail, sendAccountDeclinedEmail, sendNotice, ownerInbox,
 };

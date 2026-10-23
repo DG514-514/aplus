@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/css/portal.css">
+  <link rel="stylesheet" href="/css/terms.css">
   <script src="/js/i18n.js" defer></script>
   <script src="/js/app.js" defer></script>
   <script src="/js/signup.js" defer></script>
@@ -29,7 +30,7 @@
       <div class="auth-form-wrap">
         <div id="signup-step">
           <h1 class="auth-title">Create your account</h1>
-          <p class="auth-sub">Tell us about you and your place. We’ll review your details and email you as soon as your account is approved.</p>
+          <p class="auth-sub">Tell us about you and your place, sign our Terms &amp; Conditions, and your account is ready right away.</p>
 
           <form id="signup-form" class="form-grid" novalidate>
             <div class="alert alert-error full" role="alert" hidden></div>
@@ -46,12 +47,12 @@
               <input id="su-phone" name="phone" type="tel" autocomplete="tel" maxlength="40" required>
             </div>
             <div class="field full">
-              <label for="su-residence">Residence</label>
-              <input id="su-residence" name="residence" type="text" autocomplete="street-address" maxlength="160" placeholder="e.g. Maple Hall or street address" required>
+              <label for="su-residence">Address</label>
+              <input id="su-residence" name="residence" type="text" autocomplete="street-address" maxlength="160" placeholder="Street address, city" required>
             </div>
             <div class="field">
-              <label for="su-room">Unit / room <span class="optional">(optional)</span></label>
-              <input id="su-room" name="room" type="text" maxlength="40" placeholder="e.g. 214">
+              <label for="su-room">Unit / Apt <span class="optional">(optional)</span></label>
+              <input id="su-room" name="room" type="text" maxlength="40" placeholder="e.g. 12B">
             </div>
             <div class="field">
               <label for="su-bedrooms">Number of bedrooms</label>
@@ -80,19 +81,24 @@
               <label for="su-note">Anything else we should know? <span class="optional">(optional)</span></label>
               <textarea id="su-note" name="note" maxlength="1000" placeholder="Preferred days, access instructions, move-in date…"></textarea>
             </div>
-            <p class="auth-fine full">By creating an account you’ll be asked to review and agree to our <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> the first time you sign in.</p>
-            <button class="btn btn-primary btn-block full" type="submit">Create Account</button>
+            <fieldset class="signup-terms full">
+              <legend>Terms &amp; Conditions</legend>
+              <p class="auth-fine">Please read our Terms &amp; Conditions of Service. You need to sign them to create your account. <a href="/terms" target="_blank" rel="noopener">Open in a new tab</a></p>
+              <div class="signup-terms-box terms-body" id="su-terms" tabindex="0" role="region" aria-label="Terms and Conditions">
+                <p class="muted">Loading the Terms &amp; Conditions…</p>
+              </div>
+              <div class="field">
+                <label for="su-sign">Type your full name to sign</label>
+                <input id="su-sign" name="signedName" type="text" autocomplete="name" maxlength="120" required>
+              </div>
+              <label class="check"><input type="checkbox" id="su-agree" name="agree" required> I have read and agree to the A+ Cleaning Solutions Terms &amp; Conditions of Service.</label>
+            </fieldset>
+            <button class="btn btn-primary btn-block full" type="submit">Sign &amp; Create Account</button>
           </form>
 
           <p class="auth-help">Already have an account? <a href="/login">Sign in</a></p>
         </div>
 
-        <div id="signup-done" hidden>
-          <div class="auth-done-icon" aria-hidden="true">✓</div>
-          <h1 class="auth-title">Thanks — request received!</h1>
-          <p class="auth-sub">Your account is waiting for approval. We’ll email <strong id="su-done-email"></strong> as soon as it’s ready, usually within one business day. Then you can sign in with the password you just created.</p>
-          <a class="btn btn-outline" href="/">Back to website</a>
-        </div>
       </div>
       <a class="auth-back" href="/login">← Back to sign in</a>
     </section>

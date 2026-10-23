@@ -143,22 +143,42 @@ app.post('/api/signup', (req, res) => {
   if (!client.residence) return res.status(400).json({ error: 'Enter your residence or street address.' });
   if (!client.bedrooms || !client.bathrooms) return res.status(400).json({ error: 'Choose the number of bedrooms and bathrooms.' });
   if (password.length < 8) return res.status(400).json({ error: 'Choose a password of at least 8 characters.' });
+  // The Terms & Conditions are signed as part of creating the account.
+  const signedName = str(b.signedName, 120).replace(/\s+/g, ' ');
+  if (signedName.length < 2) return res.status(400).json({ error: 'Type your full name to sign the Terms & Conditions.' });
+  if (b.agree !== true) return res.status(400).json({ error: 'Tick the box to confirm you agree to the Terms & Conditions.' });
+  if (b.termsVersion !== terms.version) {
+    return res.status(409).json({ error: 'The terms were just updated. Please refresh the page and review the latest version.' });
+  }
   if (db.prepare('SELECT 1 FROM clients WHERE email = ?').get(client.email)) {
     return res.status(409).json({ error: 'An account with that email already exists. Try signing in, or email us if you need help.' });
   }
 
-  const { lastInsertRowid } = db.prepare(`
-    INSERT INTO clients (email, name, password_hash, phone, residence, room, bedrooms, bathrooms, signup_note, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-  `).run(client.email, client.name, auth.hashPassword(password), client.phone, client.residence, client.room,
-    client.bedrooms, client.bathrooms, client.note);
-  res.status(201).json({ ok: true, status: 'pending' });
+  // Account and signed terms are saved together: no account without the signature.
+  let id;
+  db.exec('BEGIN');
+  try {
+    id = Number(db.prepare(`
+      INSERT INTO clients (email, name, password_hash, phone, residence, room, bedrooms, bathrooms, signup_note, status, approved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))
+    `).run(client.email, client.name, auth.hashPassword(password), client.phone, client.residence, client.room,
+      client.bedrooms, client.bathrooms, client.note).lastInsertRowid);
+    terms.accept({ id, name: client.name, email: client.email }, signedName, { ip: req.ip, userAgent: req.get('user-agent') });
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  // Signed in straight away.
+  auth.setSessionCookie(res, auth.createSession(id));
+  res.status(201).json({ ok: true, status: 'active', redirect: '/portal' });
 
-  // Alerts are best-effort: the request is already waiting in the dashboard.
-  const saved = { ...client, id: Number(lastInsertRowid) };
+  // Emails are best-effort: the account already exists.
+  const saved = { ...client, id };
   notify.sendSignupAlert(saved).catch((err) => console.error('Sign-up email failed:', err.message));
+  notify.sendWelcomeEmail(saved).catch((err) => console.error('Welcome email failed:', err.message));
   push.notifyOwner({
-    title: 'New account request',
+    title: 'New client signed up',
     body: [client.name, client.residence].filter(Boolean).join(' · '),
     url: '/admin#clients', tag: 'signup',
   }).catch((err) => console.error('Push failed:', err.message));

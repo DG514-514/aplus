@@ -1,6 +1,7 @@
 'use strict';
 
-// Website sign-up: the account is created as "pending" until the owner approves it.
+// Website sign-up: the client signs the Terms & Conditions as part of the form, the account is
+// created straight away and they land in their portal, signed in.
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('signup-form');
   const alertBox = form.querySelector('.alert');
@@ -15,6 +16,36 @@ document.addEventListener('DOMContentLoaded', () => {
     revealBtn.setAttribute('aria-pressed', String(show));
     revealBtn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
   });
+
+  const T = (s, v) => (window.I18N ? window.I18N.t(s, v) : s.replace(/\{(\w+)\}/g, (m, k) => (v && k in v ? v[k] : m)));
+  const el = (tag, attrs, ...kids) => {
+    const node = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => { if (k === 'class') node.className = v; else node.setAttribute(k, v); });
+    kids.forEach((k) => { if (k != null) node.append(k); });
+    return node;
+  };
+
+  // Load and show the current Terms & Conditions; the version is sent with the signature.
+  let termsVersion = null;
+  const termsBox = document.getElementById('su-terms');
+  fetch('/api/terms').then((r) => r.json()).then((t) => {
+    termsVersion = t.version;
+    const parts = [el('p', { class: 'muted' }, T('{company} · Terms & Conditions of Service · Version {version}', t))];
+    if (window.I18N && window.I18N.lang === 'es') {
+      parts.push(el('p', { class: 'alert alert-info' }, T('Courtesy translation. The English version of these Terms & Conditions is the one that applies and prevails if there is any difference.')));
+    }
+    for (const section of t.sections) {
+      parts.push(el('section', {}, el('h3', {}, section.heading),
+        ...section.blocks.map((b) => (b.type === 'list' ? el('ul', {}, ...b.items.map((i) => el('li', {}, i))) : el('p', {}, b.text)))));
+    }
+    termsBox.replaceChildren(...parts);
+  }).catch(() => {
+    termsBox.replaceChildren(el('p', {}, T('We couldn’t load the Terms & Conditions. Please refresh the page.')));
+  });
+
+  // Suggest the full name as the signature once it's typed.
+  const signName = document.getElementById('su-sign');
+  form.name.addEventListener('change', () => { if (!signName.value.trim()) signName.value = form.name.value.trim().replace(/\s+/g, ' '); });
 
   const showError = (message, field) => {
     alertBox.textContent = message;
@@ -37,6 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!data.bedrooms) return showError('Choose the number of bedrooms.', form.bedrooms);
     if (!data.bathrooms) return showError('Choose the number of bathrooms.', form.bathrooms);
     if (data.password.length < 8) return showError('Choose a password of at least 8 characters.', password);
+    if (!termsVersion) return showError('We couldn’t load the Terms & Conditions. Please refresh the page.');
+    if ((data.signedName || '').length < 2) return showError('Type your full name to sign the Terms & Conditions.', signName);
+    const agree = document.getElementById('su-agree');
+    if (!agree.checked) return showError('Tick the box to confirm you agree to the Terms & Conditions.', agree);
+    data.agree = true;
+    data.termsVersion = termsVersion;
 
     submit.disabled = true;
     submit.textContent = 'Creating account…';
@@ -48,14 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
-      document.getElementById('su-done-email').textContent = data.email;
-      document.getElementById('signup-step').hidden = true;
-      document.getElementById('signup-done').hidden = false;
-      window.scrollTo({ top: 0 });
+      // Account created and signed in: straight to the portal.
+      window.location.assign(body.redirect || '/portal');
     } catch (err) {
-      showError(err.message);
+      showError(T(err.message));
       submit.disabled = false;
-      submit.textContent = 'Create Account';
+      submit.textContent = 'Sign & Create Account';
     }
   });
 });

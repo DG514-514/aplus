@@ -177,3 +177,13 @@
 .pay-account { margin-top: 18px; font-size: .92rem; }
 .pay-missing { text-align: center; padding: 32px 20px; }
 .badge-cancelled { background: #efefef; color: #777; }
+
+/* Sign-up: Terms & Conditions signed as part of the form */
+.signup-terms { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 16px 18px 18px; margin: 4px 0 0; display: grid; gap: 12px; background: var(--white); }
+.signup-terms legend { font-family: var(--font-head); font-weight: 800; color: var(--forest); padding: 0 6px; }
+.signup-terms .auth-fine { margin: 0; }
+.signup-terms-box.terms-body { max-height: 260px; overflow-y: auto; margin: 0; padding: 14px 16px; font-size: .9rem; box-shadow: none; background: var(--sage-50); }
+.signup-terms-box h3 { font-size: .95rem; }
+.signup-terms .field { margin: 0; }
+.signup-terms .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; line-height: 1.4; cursor: pointer; }
+.signup-terms .check input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--forest); }
